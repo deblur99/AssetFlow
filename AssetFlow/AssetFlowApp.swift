@@ -1,32 +1,16 @@
-//
-//  AssetFlowApp.swift
-//  AssetFlow
-//
-//  Created by 한현민 on 3/6/26.
-//
-
 import SwiftUI
-import SwiftData
 
 @main
 struct AssetFlowApp: App {
-    var sharedModelContainer: ModelContainer = {
-        let schema = Schema([
-            Item.self,
-        ])
-        let modelConfiguration = ModelConfiguration(schema: schema, isStoredInMemoryOnly: false)
-
-        do {
-            return try ModelContainer(for: schema, configurations: [modelConfiguration])
-        } catch {
-            fatalError("Could not create ModelContainer: \(error)")
-        }
-    }()
+    @State private var appState = AppState()
 
     var body: some Scene {
         WindowGroup {
-            ContentView()
+            MainWindowView(appState: appState)
+                .frame(minWidth: 600, minHeight: 400)  // 최소 창 크기
         }
-        .modelContainer(sharedModelContainer)
+        .defaultSize(width: 1080, height: 800) // 초기 창 크기
+        .windowStyle(.titleBar)
+        .windowToolbarStyle(.unified(showsTitle: true))
     }
 }
