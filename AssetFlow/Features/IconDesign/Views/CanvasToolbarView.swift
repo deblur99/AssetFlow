@@ -42,6 +42,6 @@ struct CanvasToolbarView: View {
         }
         .buttonStyle(.plain)
         .help(tool.rawValue)
-        .keyboardShortcut(tool.shortcutKey, modifiers: [])
+        .keyboardShortcut(tool.shortcutKey, modifiers: [.command])
     }
 }

@@ -1,9 +1,11 @@
 import SwiftUI
 
 struct MainWindowView: View {
-    @Bindable var appState: AppState
+    @Environment(AppState.self) var appState: AppState
 
     var body: some View {
+        @Bindable var appState = appState
+        
         NavigationSplitView {
             List(
                 AppFeature.allCases,

@@ -5,9 +5,10 @@ import SwiftUI
 nonisolated struct ShapeElement: Identifiable {
     let id: UUID
     var name: String
-    var isVisible: Bool = true
-    var isLocked: Bool  = false
-    var opacity: Double = 1.0
+    var isVisible: Bool  = true
+    var isLocked: Bool   = false
+    var opacity: Double  = 1.0
+    var rotation: Double = 0   // degrees
     var frame: CGRect
     var shapeType: ShapeType
     var fillColor: Color
@@ -21,14 +22,14 @@ nonisolated struct ShapeElement: Identifiable {
 nonisolated struct PathElement: Identifiable {
     let id: UUID
     var name: String
-    var isVisible: Bool = true
-    var isLocked: Bool  = false
-    var opacity: Double = 1.0
+    var isVisible: Bool  = true
+    var isLocked: Bool   = false
+    var opacity: Double  = 1.0
+    var rotation: Double = 0   // degrees, rotates around bounding-box center
     var points: [CGPoint]
     var color: Color
     var lineWidth: CGFloat
 
-    /// Bounding box computed from the stroke points.
     var frame: CGRect {
         guard !points.isEmpty else { return .zero }
         let xs = points.map(\.x), ys = points.map(\.y)
@@ -41,9 +42,10 @@ nonisolated struct PathElement: Identifiable {
 nonisolated struct ImageElement: Identifiable {
     let id: UUID
     var name: String
-    var isVisible: Bool = true
-    var isLocked: Bool  = false
-    var opacity: Double = 1.0
+    var isVisible: Bool  = true
+    var isLocked: Bool   = false
+    var opacity: Double  = 1.0
+    var rotation: Double = 0   // degrees
     var frame: CGRect
     var image: NSImage
 }
@@ -120,5 +122,74 @@ nonisolated enum CanvasElement: Identifiable {
             case .image(var e): e.opacity = newValue; self = .image(e)
             }
         }
+    }
+
+    var rotation: Double {
+        get {
+            switch self {
+            case .shape(let e): e.rotation
+            case .path(let e):  e.rotation
+            case .image(let e): e.rotation
+            }
+        }
+        set {
+            switch self {
+            case .shape(var e): e.rotation = newValue; self = .shape(e)
+            case .path(var e):  e.rotation = newValue; self = .path(e)
+            case .image(var e): e.rotation = newValue; self = .image(e)
+            }
+        }
+    }
+
+    // MARK: - Rotation-aware hit testing
+
+    func containsPoint(_ point: CGPoint, tolerance: CGFloat = 4) -> Bool {
+        let center = CGPoint(x: frame.midX, y: frame.midY)
+        let local  = rotated(CGPoint(x: point.x - center.x, y: point.y - center.y),
+                             by: -rotation)
+        return abs(local.x) <= frame.width  / 2 + tolerance
+            && abs(local.y) <= frame.height / 2 + tolerance
+    }
+
+    // MARK: - Duplication (new UUID, offset position)
+
+    func duplicated(offset: CGFloat = 8) -> CanvasElement {
+        switch self {
+        case .shape(let e):
+            var copy = e
+            copy = ShapeElement(
+                id: UUID(), name: e.name + " Copy",
+                isVisible: e.isVisible, isLocked: e.isLocked,
+                opacity: e.opacity, rotation: e.rotation,
+                frame: e.frame.offsetBy(dx: offset, dy: offset),
+                shapeType: e.shapeType,
+                fillColor: e.fillColor, strokeColor: e.strokeColor,
+                strokeWidth: e.strokeWidth, cornerRadius: e.cornerRadius)
+            return .shape(copy)
+        case .path(let e):
+            let moved = PathElement(
+                id: UUID(), name: e.name + " Copy",
+                isVisible: e.isVisible, isLocked: e.isLocked,
+                opacity: e.opacity, rotation: e.rotation,
+                points: e.points.map { CGPoint(x: $0.x + offset, y: $0.y + offset) },
+                color: e.color, lineWidth: e.lineWidth)
+            return .path(moved)
+        case .image(let e):
+            let moved = ImageElement(
+                id: UUID(), name: e.name + " Copy",
+                isVisible: e.isVisible, isLocked: e.isLocked,
+                opacity: e.opacity, rotation: e.rotation,
+                frame: e.frame.offsetBy(dx: offset, dy: offset),
+                image: e.image)
+            return .image(moved)
+        }
+    }
+
+    // MARK: - Private geometry helper
+
+    private func rotated(_ v: CGPoint, by degrees: Double) -> CGPoint {
+        let r   = CGFloat(degrees * .pi / 180)
+        let cos = Foundation.cos(r), sin = Foundation.sin(r)
+        return CGPoint(x: v.x * cos - v.y * sin, y: v.x * sin + v.y * cos)
     }
 }

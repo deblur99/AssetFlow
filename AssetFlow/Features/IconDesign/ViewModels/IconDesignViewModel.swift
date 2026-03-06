@@ -1,6 +1,17 @@
 import SwiftUI
 import UniformTypeIdentifiers
 
+// MARK: - Active transform session
+
+enum ActiveTransform {
+    case moving(startFrame: CGRect, startPoint: CGPoint)
+    case movingGroup(startFrames: [UUID: CGRect], startPoint: CGPoint)
+    case resizing(handle: ResizeHandle, startFrame: CGRect, startPoint: CGPoint, startRotation: Double, anchorCanvas: CGPoint)
+    case rotating(startMouseAngle: Double, startElementRotation: Double, center: CGPoint)
+}
+
+// MARK: - ViewModel
+
 @Observable
 @MainActor
 final class IconDesignViewModel {
@@ -9,15 +20,27 @@ final class IconDesignViewModel {
     var project = IconProject()
 
     // MARK: - Tool state
-    var selectedTool: DrawingTool = .select
-    var selectedElementId: UUID?
+    var selectedTool: DrawingTool = .move
+    /// 다중 선택된 요소 ID 집합. 단일 선택 시에도 여기에 1개 들어간다.
+    var selectedElementIds: Set<UUID> = []
+
+    /// 단일 선택 편의 프로퍼티. 정확히 1개 선택된 경우에만 non-nil.
+    var selectedElementId: UUID? {
+        selectedElementIds.count == 1 ? selectedElementIds.first : nil
+    }
 
     // MARK: - Active drawing (in-progress, not yet committed)
     var activePathPoints: [CGPoint] = []
     var activeDragStart: CGPoint?
     var activeDragCurrent: CGPoint?
 
-    // MARK: - Current style (applied when creating new elements)
+    // MARK: - Active transform session
+    var activeTransform: ActiveTransform?
+
+    /// 직전에 드래그로 생성된 요소 ID. 생성 직후 드래그로 위치 조정 허용에 사용.
+    var justCreatedElementId: UUID?
+
+    // MARK: - Current style
     var fillColor: Color   = Color(red: 0.20, green: 0.47, blue: 0.95)
     var strokeColor: Color = .clear
     var lineWidth: CGFloat = 2
@@ -26,12 +49,20 @@ final class IconDesignViewModel {
 
     // MARK: - Viewport
     var zoom: CGFloat = 1.0
+    var canvasOffset: CGSize = .zero
 
     // MARK: - Undo / Redo
     private var undoStack: [[CanvasElement]] = []
     private var redoStack: [[CanvasElement]] = []
     private let maxUndoCount = 50
-
+    
+    // MARK: - Zoom Threshold
+    private let maxZoomRatio = 10.0 // 1000%
+    private let minZoomRatio = 0.05 // 5%
+    static let zoomPickerLevels: [CGFloat] = [
+        8.0, 4.0, 2.0, 1.5, 1.0, 0.8, 0.7, 0.6, 0.5, 0.4, 0.3, 0.2, 0.1
+    ]
+    
     // MARK: - Computed helpers
 
     var elements: [CanvasElement] { project.elements }
@@ -43,6 +74,13 @@ final class IconDesignViewModel {
 
     var canUndo: Bool { !undoStack.isEmpty }
     var canRedo: Bool { !redoStack.isEmpty }
+    
+    // MARK: - Edit Metadata
+    
+    func renameProject(_ newName: String) {
+        project.name = newName
+        project.updatedAt = Date()
+    }
 
     // MARK: - Drawing gestures
 
@@ -59,11 +97,12 @@ final class IconDesignViewModel {
         case .rectangle, .ellipse:
             if activeDragStart == nil {
                 checkpoint()
+                justCreatedElementId = nil  // 새 도형 그리기 시작 시 플래그 소거
                 activeDragStart = point
             }
             activeDragCurrent = point
 
-        case .select:
+        case .move, .select:
             break
         }
     }
@@ -84,7 +123,7 @@ final class IconDesignViewModel {
             )
             project.addElement(.path(pathEl))
             activePathPoints = []
-            selectedElementId = project.elements.last?.id
+            if let id = project.elements.last?.id { selectedElementIds = [id] }
 
         case .rectangle, .ellipse:
             guard let start = activeDragStart, let end = activeDragCurrent else {
@@ -109,28 +148,39 @@ final class IconDesignViewModel {
             shapeEl.opacity = currentOpacity
             project.addElement(.shape(shapeEl))
             resetActiveDrawing()
-            selectedElementId = project.elements.last?.id
+            if let id = project.elements.last?.id {
+                selectedElementIds = [id]
+                justCreatedElementId = id
+            }
 
-        case .select:
+        case .move, .select:
             break
         }
     }
 
     func handleTap(at point: CGPoint) {
-        guard selectedTool == .select else { return }
+        // 이동 모드에서는 선택 불가
+        guard selectedTool != .move else { return }
         let hit = project.elements.reversed().first {
-            $0.isVisible && $0.frame.insetBy(dx: -4, dy: -4).contains(point)
+            $0.isVisible && $0.containsPoint(point)
         }
-        selectedElementId = hit?.id
+        selectedElementIds = hit.map { [$0.id] } ?? []
+    }
+
+    /// 마키 사각형 안에 있는 요소들을 일괄 선택한다 (선택 모드 전용).
+    func applyMarqueeSelection(in rect: CGRect) {
+        let ids = project.elements.filter { el in
+            el.isVisible && rect.intersects(el.frame)
+        }.map(\.id)
+        selectedElementIds = Set(ids)
     }
 
     // MARK: - Zoom
 
-    func zoomIn()    { zoom = min(zoom * 1.25, 16.0) }
-    func zoomOut()   { zoom = max(zoom / 1.25, 0.05) }
+    func zoomIn()    { zoom = min(zoom * 1.25, maxZoomRatio) }
+    func zoomOut()   { zoom = max(zoom / 1.25, minZoomRatio) }
     func resetZoom() { zoom = 1.0 }
 
-    /// 주어진 뷰포트 크기에 캔버스 전체가 들어오도록 zoom을 자동 조정합니다.
     func zoomToFit(in viewportSize: CGSize) {
         let padding: CGFloat = 40
         let availableWidth  = viewportSize.width  - padding * 2
@@ -147,7 +197,7 @@ final class IconDesignViewModel {
         guard let prev = undoStack.popLast() else { return }
         redoStack.append(project.elements)
         project.elements = prev
-        selectedElementId = nil
+        selectedElementIds = []
     }
 
     func redo() {
@@ -156,23 +206,130 @@ final class IconDesignViewModel {
         project.elements = next
     }
 
-    // MARK: - Element management
+    // MARK: - Transform: public entry points
+
+    func beginTransform() {
+        checkpoint()
+    }
+
+    /// Move / resize – updates the element's frame in canvas space.
+    func setElementFrame(id: UUID, frame newFrame: CGRect) {
+        guard let idx = project.elements.firstIndex(where: { $0.id == id }) else { return }
+        switch project.elements[idx] {
+        case .shape(var e):
+            e.frame = newFrame
+            project.elements[idx] = .shape(e)
+        case .image(var e):
+            e.frame = newFrame
+            project.elements[idx] = .image(e)
+        case .path(var e):
+            // For paths, translate all points to follow the new origin
+            let dx = newFrame.minX - e.frame.minX
+            let dy = newFrame.minY - e.frame.minY
+            e.points = e.points.map { CGPoint(x: $0.x + dx, y: $0.y + dy) }
+            project.elements[idx] = .path(e)
+        }
+        project.updatedAt = Date()
+    }
+
+    /// Sets the rotation (degrees) of the element.
+    func setElementRotation(id: UUID, rotation: Double) {
+        guard let idx = project.elements.firstIndex(where: { $0.id == id }) else { return }
+        project.elements[idx].rotation = rotation
+        project.updatedAt = Date()
+    }
+
+    /// Batch-update any combination of transform properties.
+    func setElementTransform(id: UUID,
+                              x: CGFloat?    = nil,
+                              y: CGFloat?    = nil,
+                              width: CGFloat? = nil,
+                              height: CGFloat? = nil,
+                              rotation: Double? = nil) {
+        guard let idx = project.elements.firstIndex(where: { $0.id == id }) else { return }
+        let old = project.elements[idx].frame
+        let newFrame = CGRect(
+            x:      x      ?? old.minX,
+            y:      y      ?? old.minY,
+            width:  max(1, width  ?? old.width),
+            height: max(1, height ?? old.height)
+        )
+        checkpoint()
+        setElementFrame(id: id, frame: newFrame)
+        if let r = rotation { setElementRotation(id: id, rotation: r) }
+    }
+
+    // MARK: - Element style editing
+
+    func updateSelectedStyle(
+        fillColor:    Color?   = nil,
+        strokeColor:  Color?   = nil,
+        strokeWidth:  CGFloat? = nil,
+        cornerRadius: CGFloat? = nil,
+        opacity:      Double?  = nil
+    ) {
+        guard let id = selectedElementId,
+              let idx = project.elements.firstIndex(where: { $0.id == id }) else { return }
+        switch project.elements[idx] {
+        case .shape(var e):
+            if let v = fillColor    { e.fillColor    = v }
+            if let v = strokeColor  { e.strokeColor  = v }
+            if let v = strokeWidth  { e.strokeWidth  = v }
+            if let v = cornerRadius { e.cornerRadius = v }
+            if let v = opacity      { e.opacity      = v }
+            project.elements[idx] = .shape(e)
+        case .path(var e):
+            if let v = fillColor   { e.color     = v }
+            if let v = strokeColor { e.color     = v }
+            if let v = strokeWidth { e.lineWidth = v }
+            if let v = opacity     { e.opacity   = v }
+            project.elements[idx] = .path(e)
+        case .image(var e):
+            if let v = opacity { e.opacity = v }
+            project.elements[idx] = .image(e)
+        }
+        project.updatedAt = Date()
+    }
+
+    // MARK: - Clipboard
+    private var clipboard: CanvasElement?
+
+    func copySelectedElement() {
+        clipboard = selectedElement
+    }
+
+    func pasteElement() {
+        guard let element = clipboard else { return }
+        checkpoint()
+        project.addElement(element.duplicated())
+        if let id = project.elements.last?.id { selectedElementIds = [id] }
+    }
+
+    func deleteSelectedElements() {
+        guard !selectedElementIds.isEmpty else { return }
+        checkpoint()
+        for id in selectedElementIds { project.removeElement(id: id) }
+        selectedElementIds = []
+    }
 
     func deleteSelectedElement() {
-        guard let id = selectedElementId else { return }
-        deleteElement(id: id)
+        deleteSelectedElements()
     }
 
     func deleteElement(id: UUID) {
         checkpoint()
-        if selectedElementId == id { selectedElementId = nil }
+        selectedElementIds.remove(id)
         project.removeElement(id: id)
+    }
+
+    /// 여러 요소의 프레임을 한 번에 업데이트한다 (그룹 이동 시 사용).
+    func setElementsFrames(_ frames: [UUID: CGRect]) {
+        for (id, frame) in frames { setElementFrame(id: id, frame: frame) }
     }
 
     func toggleVisibility(id: UUID) {
         guard let idx = project.elements.firstIndex(where: { $0.id == id }) else { return }
-        let current = project.elements[idx].isVisible
-        project.elements[idx].isVisible = !current
+        project.elements[idx].isVisible.toggle()
     }
 
     func bringForward(id: UUID) {
@@ -216,19 +373,19 @@ final class IconDesignViewModel {
             image: image
         )
         project.addElement(.image(imgEl))
-        selectedElementId = project.elements.last?.id
+        if let id = project.elements.last?.id { selectedElementIds = [id] }
     }
 
     // MARK: - Private helpers
 
-    private func checkpoint() {
+    func checkpoint() {
         undoStack.append(project.elements)
         if undoStack.count > maxUndoCount { undoStack.removeFirst() }
         redoStack.removeAll()
     }
 
     private func resetActiveDrawing() {
-        activeDragStart = nil
+        activeDragStart   = nil
         activeDragCurrent = nil
     }
 

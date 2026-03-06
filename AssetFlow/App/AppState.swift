@@ -22,4 +22,13 @@ nonisolated enum AppFeature: String, CaseIterable, Identifiable {
 @MainActor
 final class AppState {
     var selectedFeature: AppFeature = .iconDesign
+    var iconDesignViewModel = IconDesignViewModel()
+    
+    func iconDesignZoomIn() {
+        iconDesignViewModel.zoomIn()
+    }
+    
+    func iconDesignZoomOut() {
+        iconDesignViewModel.zoomOut()
+    }
 }
