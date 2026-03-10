@@ -20,8 +20,7 @@ struct MainWindowView: View {
         } detail: {
             switch appState.selectedFeature {
             case .iconDesign: IconDesignView()
-            case .iconExport: IconExportView()
-            case .screenshots: ScreenshotsView()
+            case .showcase: ShowcaseView()
             case .stringManager: StringManagerView()
             }
         }

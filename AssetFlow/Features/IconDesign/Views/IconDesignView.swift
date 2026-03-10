@@ -9,6 +9,7 @@ struct IconDesignView: View {
     
     @State private var isShowingRenameMenu = false
     @State private var isShowingZoomMenu = false
+    @State private var isShowingExportMenu = false
 
     var body: some View {
         HStack(spacing: 0) {
@@ -87,6 +88,19 @@ struct IconDesignView: View {
                     Image(systemName: "1.magnifyingglass")
                 }
                 .help("Reset Zoom (100%)")
+
+                Divider()
+
+                Button {
+                    isShowingExportMenu.toggle()
+                } label: {
+                    Label("Export", systemImage: "square.and.arrow.up")
+                }
+                .help("Export Icon")
+                .popover(isPresented: $isShowingExportMenu, arrowEdge: .bottom) {
+                    Text("Export options coming soon.")
+                        .padding()
+                }
             }
         }
         .onKeyPress(.delete) {

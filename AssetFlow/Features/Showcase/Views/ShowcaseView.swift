@@ -1,9 +1,9 @@
 import SwiftUI
 
-struct ScreenshotsView: View {
+struct ShowcaseView: View {
     var body: some View {
         ContentUnavailableView(
-            "Screenshots",
+            "Showcase",
             systemImage: "iphone.gen3",
             description: Text("Wrap your screenshots in realistic device frames for App Store listings.")
         )
