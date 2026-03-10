@@ -25,7 +25,7 @@ struct DesignCanvasView: View {
                 canvasLayer
                     .shadow(color: .black.opacity(0.2), radius: 8, x: 0, y: 4)
                     .position(
-                        x: geometry.size.width  / 2 + vm.canvasOffset.width,
+                        x: geometry.size.width / 2 + vm.canvasOffset.width,
                         y: geometry.size.height / 2 + vm.canvasOffset.height)
                     .gesture(interactionGesture)
                     .onContinuousHover { phase in
@@ -57,9 +57,8 @@ struct DesignCanvasView: View {
                     canvasSize: vm.project.canvasSize,
                     zoom: vm.zoom,
                     canvasOffset: $vm.canvasOffset,
-                    viewportSize: geometry.size
-                )
-                .padding(12)
+                    viewportSize: geometry.size)
+                    .padding(12)
             }
         }
     }
@@ -89,7 +88,7 @@ struct DesignCanvasView: View {
                     Rectangle()
                         .stroke(Color.accentColor,
                                 style: StrokeStyle(lineWidth: 1.5, dash: [6, 3]))
-                        .frame(width:  element.frame.width  * vm.zoom,
+                        .frame(width: element.frame.width * vm.zoom,
                                height: element.frame.height * vm.zoom)
                         .rotationEffect(Angle(degrees: element.rotation))
                         .position(x: element.frame.midX * vm.zoom,
@@ -104,7 +103,7 @@ struct DesignCanvasView: View {
                     .stroke(Color.accentColor,
                             style: StrokeStyle(lineWidth: 1, dash: [4, 3]))
                     .background(Color.accentColor.opacity(0.05))
-                    .frame(width:  mq.width  * vm.zoom,
+                    .frame(width: mq.width * vm.zoom,
                            height: mq.height * vm.zoom)
                     .position(x: mq.midX * vm.zoom, y: mq.midY * vm.zoom)
                     .allowsHitTesting(false)
@@ -113,9 +112,11 @@ struct DesignCanvasView: View {
         .frame(width: vm.project.canvasSize.width * vm.zoom,
                height: vm.project.canvasSize.height * vm.zoom)
     }
+}
 
-    // MARK: - Element rendering
+// MARK: - Element rendering
 
+extension DesignCanvasView {
     private func renderElement(_ element: CanvasElement,
                                in ctx: inout GraphicsContext,
                                zoom z: CGFloat)
@@ -179,9 +180,11 @@ struct DesignCanvasView: View {
             ctx.stroke(path, with: .color(stroke), lineWidth: max(1, vm.lineWidth * z))
         }
     }
+}
 
-    // MARK: - Cursor
+// MARK: - Cursor
 
+extension DesignCanvasView {
     /// 현재 커서 위치에 맞는 NSCursor를 반환합니다.
     private func cursorFor(_ pt: CGPoint) -> NSCursor {
         // 활성 변환 중엔 변환 종류에 맞는 커서
@@ -223,7 +226,7 @@ struct DesignCanvasView: View {
 
         // 현재 도구 기본 커서
         switch vm.selectedTool {
-        case .move:   return isPanning ? .closedHand : .openHand
+        case .move: return isPanning ? .closedHand : .openHand
         case .select: return .crosshair
         case .pen, .rectangle, .ellipse: return .crosshair
         }
@@ -249,9 +252,11 @@ struct DesignCanvasView: View {
         }
         return base + rotation
     }
+}
 
-    // MARK: - Zoom gestures
+// MARK: - Zoom gestures
 
+extension DesignCanvasView {
     private var backgroundPanGesture: some Gesture {
         DragGesture(minimumDistance: 4)
             .onChanged { value in
@@ -260,7 +265,7 @@ struct DesignCanvasView: View {
                     panStartOffset = vm.canvasOffset
                 }
                 vm.canvasOffset = CGSize(
-                    width:  panStartOffset.width  + value.translation.width,
+                    width: panStartOffset.width + value.translation.width,
                     height: panStartOffset.height + value.translation.height)
                 NSCursor.closedHand.set()
             }
@@ -311,19 +316,21 @@ struct DesignCanvasView: View {
                 dy = event.scrollingDeltaY
             }
             DispatchQueue.main.async {
-                self.vm.canvasOffset.width  += dx
+                self.vm.canvasOffset.width += dx
                 self.vm.canvasOffset.height += dy
             }
             return nil
         }
     }
+}
 
-    // MARK: - Unified interaction gesture
+// MARK: - Unified interaction gesture
 
+extension DesignCanvasView {
     private var interactionGesture: some Gesture {
         DragGesture(minimumDistance: 0)
             .onChanged { value in
-                let pt    = canvasCoord(from: value.location)
+                let pt = canvasCoord(from: value.location)
                 let start = canvasCoord(from: value.startLocation)
 
                 // ── Begin phase ─────────────────────────────────────────────
@@ -349,13 +356,13 @@ struct DesignCanvasView: View {
                         let rotPos = rotationHandleCanvasPos(for: el)
                         if dist(start, rotPos) < handleTolerance {
                             let center = CGPoint(x: el.frame.midX, y: el.frame.midY)
-                            let angle  = atan2(start.y - center.y,
-                                               start.x - center.x) * 180 / .pi
+                            let angle = atan2(start.y - center.y,
+                                              start.x - center.x) * 180 / .pi
                             vm.beginTransform()
                             vm.activeTransform = .rotating(
-                                startMouseAngle:      angle,
+                                startMouseAngle: angle,
                                 startElementRotation: el.rotation,
-                                center:               center)
+                                center: center)
                             NSCursor.crosshair.set()
                             return
                         }
@@ -365,11 +372,11 @@ struct DesignCanvasView: View {
                             let anchor = handle.opposite.canvasPosition(
                                 frame: el.frame, rotation: el.rotation)
                             vm.activeTransform = .resizing(
-                                handle:        handle,
-                                startFrame:    el.frame,
-                                startPoint:    start,
+                                handle: handle,
+                                startFrame: el.frame,
+                                startPoint: start,
                                 startRotation: el.rotation,
-                                anchorCanvas:  anchor)
+                                anchorCanvas: anchor)
                             resizeCursor(for: handle, rotation: el.rotation).set()
                             return
                         }
@@ -425,7 +432,7 @@ struct DesignCanvasView: View {
                 // ── Continue pan phase ───────────────────────────────────────
                 if isPanning {
                     vm.canvasOffset = CGSize(
-                        width:  panStartOffset.width  + value.translation.width,
+                        width: panStartOffset.width + value.translation.width,
                         height: panStartOffset.height + value.translation.height)
                     return
                 }
@@ -434,9 +441,9 @@ struct DesignCanvasView: View {
                 if marqueeRect != nil {
                     let origin = canvasCoord(from: value.startLocation)
                     marqueeRect = CGRect(
-                        x:      min(origin.x, pt.x),
-                        y:      min(origin.y, pt.y),
-                        width:  abs(pt.x - origin.x),
+                        x: min(origin.x, pt.x),
+                        y: min(origin.y, pt.y),
+                        width: abs(pt.x - origin.x),
                         height: abs(pt.y - origin.y))
                     return
                 }
@@ -463,13 +470,13 @@ struct DesignCanvasView: View {
 
                     case .resizing(let handle, let startFrame, let startPoint, let startRotation, let anchorCanvas):
                         guard let el = vm.selectedElement else { return }
-                        let rawDelta   = CGPoint(x: pt.x - startPoint.x, y: pt.y - startPoint.y)
+                        let rawDelta = CGPoint(x: pt.x - startPoint.x, y: pt.y - startPoint.y)
                         let localDelta = rotateVec(rawDelta, by: -startRotation)
-                        let proposed   = handle.apply(delta: localDelta, to: startFrame)
-                        let oppLocal   = CGPoint(
+                        let proposed = handle.apply(delta: localDelta, to: startFrame)
+                        let oppLocal = CGPoint(
                             x: handle.opposite.unitOffset.x * proposed.width,
                             y: handle.opposite.unitOffset.y * proposed.height)
-                        let rotOpp     = rotateVec(oppLocal, by: startRotation)
+                        let rotOpp = rotateVec(oppLocal, by: startRotation)
                         let currentAnchor = CGPoint(x: proposed.midX + rotOpp.x,
                                                     y: proposed.midY + rotOpp.y)
                         let corrected = CGRect(
@@ -483,13 +490,13 @@ struct DesignCanvasView: View {
                         let currentAngle = atan2(pt.y - center.y,
                                                  pt.x - center.x) * 180 / .pi
                         var delta = currentAngle - lastAngle
-                        if delta >  180 { delta -= 360 }
+                        if delta > 180 { delta -= 360 }
                         if delta < -180 { delta += 360 }
                         let newRotation = el.rotation + delta
                         vm.setElementRotation(id: el.id, rotation: newRotation)
-                        vm.activeTransform = .rotating(startMouseAngle:      currentAngle,
+                        vm.activeTransform = .rotating(startMouseAngle: currentAngle,
                                                        startElementRotation: newRotation,
-                                                       center:               center)
+                                                       center: center)
                     }
                     return
                 }
@@ -521,16 +528,18 @@ struct DesignCanvasView: View {
                     return
                 }
 
-                let isTap = abs(value.translation.width)  < 4
-                         && abs(value.translation.height) < 4
+                let isTap = abs(value.translation.width) < 4
+                    && abs(value.translation.height) < 4
                 if isTap { vm.handleTap(at: endPt) }
-                else     { vm.handleDragEnded(at: endPt) }
+                else { vm.handleDragEnded(at: endPt) }
                 cursorFor(endPt).set()
             }
     }
+}
 
-    // MARK: - Coordinate helpers
+// MARK: - Coordinate helpers
 
+extension DesignCanvasView {
     private func canvasCoord(from v: CGPoint) -> CGPoint {
         CGPoint(x: v.x / vm.zoom, y: v.y / vm.zoom)
     }
@@ -571,9 +580,11 @@ struct DesignCanvasView: View {
                 .translatedBy(x: -center.x, y: -center.y)
         )
     }
+}
 
-    // MARK: - Hit-test helpers
+// MARK: - Hit-test helpers
 
+extension DesignCanvasView {
     private func dist(_ a: CGPoint, _ b: CGPoint) -> CGFloat { hypot(a.x - b.x, a.y - b.y) }
 
     private func rotateVec(_ v: CGPoint, by degrees: Double) -> CGPoint {
@@ -594,8 +605,9 @@ struct DesignCanvasView: View {
     /// 요소의 경계 근처에 있으면 가장 가까운 ResizeHandle을 반환하고,
     /// 내부 중앙 영역이면 nil(이동)을 반환합니다.
     private func edgeResizeHandle(at pt: CGPoint,
-                                  for element: CanvasElement) -> ResizeHandle? {
-        let frame  = element.frame
+                                  for element: CanvasElement) -> ResizeHandle?
+    {
+        let frame = element.frame
         let center = CGPoint(x: frame.midX, y: frame.midY)
         // 4 screen px 기준이지만, 요소 최소 변의 25%를 초과하지 않도록 제한.
         // 이렇게 하지 않으면 작은 요소는 center도 edge zone이 되어 resize만 트리거된다.
@@ -607,29 +619,33 @@ struct DesignCanvasView: View {
             CGPoint(x: pt.x - center.x, y: pt.y - center.y),
             by: -element.rotation)
 
-        let hw = frame.width  / 2
+        let hw = frame.width / 2
         let hh = frame.height / 2
 
         // 요소 바운딩 박스 외부면 nil
         guard abs(local.x) <= hw + edgeT,
               abs(local.y) <= hh + edgeT else { return nil }
 
-        let nearLeft   = local.x < -hw + edgeT
-        let nearRight  = local.x >  hw - edgeT
-        let nearTop    = local.y < -hh + edgeT
-        let nearBottom = local.y >  hh - edgeT
+        let nearLeft = local.x < -hw + edgeT
+        let nearRight = local.x > hw - edgeT
+        let nearTop = local.y < -hh + edgeT
+        let nearBottom = local.y > hh - edgeT
 
         // 가장자리 내에 없으면 내부 → move 영역
         guard nearLeft || nearRight || nearTop || nearBottom else { return nil }
 
         // 코너 우선
-        if nearLeft  && nearTop    { return .topLeft     }
-        if nearRight && nearTop    { return .topRight    }
-        if nearLeft  && nearBottom { return .bottomLeft  }
-        if nearRight && nearBottom { return .bottomRight }
-        if nearLeft                { return .left        }
-        if nearRight               { return .right       }
-        if nearTop                 { return .top         }
+        if nearLeft, nearTop { return .topLeft }
+        if nearRight, nearTop { return .topRight }
+        if nearLeft, nearBottom { return .bottomLeft }
+        if nearRight, nearBottom { return .bottomRight }
+        if nearLeft { return .left }
+        if nearRight { return .right }
+        if nearTop { return .top }
         return .bottom
     }
+}
+
+#Preview {
+    DesignCanvasView(vm: IconDesignViewModel())
 }
