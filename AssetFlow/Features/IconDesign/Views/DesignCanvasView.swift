@@ -8,12 +8,15 @@ struct DesignCanvasView: View {
     private var handleTolerance: CGFloat { 8 / vm.zoom }
     private var rotHandleOffset: CGFloat { 24 / vm.zoom }
 
-    @State private var lastMagnification: CGFloat = 1.0
     @State private var scrollMonitor: Any?
+    @State private var magnifyMonitor: Any?
     @State private var isPanning = false
     @State private var panStartOffset: CGSize = .zero
     /// 선택 모드에서 드래그로 그리는 마키 사각형 (캔버스 좌표)
     @State private var marqueeRect: CGRect?
+    /// 중앙 정렬 스냅 활성 여부 (X: 수직 가이드, Y: 수평 가이드)
+    @State private var snapX = false
+    @State private var snapY = false
     private class HoverState { var isHovering = false }
     @State private var hoverState = HoverState()
 
@@ -52,13 +55,14 @@ struct DesignCanvasView: View {
                     NSCursor.arrow.set()
                 }
             }
-            .simultaneousGesture(magnifyGesture)
             .onAppear {
                 vm.zoomToFit(in: geometry.size)
                 setupScrollWheelZoom()
+                setupMagnifyMonitor()
             }
             .onDisappear {
-                if let m = scrollMonitor { NSEvent.removeMonitor(m) }
+                if let m = scrollMonitor  { NSEvent.removeMonitor(m); scrollMonitor  = nil }
+                if let m = magnifyMonitor { NSEvent.removeMonitor(m); magnifyMonitor = nil }
             }
             .onChange(of: geometry.size) { _, s in vm.zoomToFit(in: s) }
             .overlay(alignment: .bottomTrailing) {
@@ -94,16 +98,21 @@ struct DesignCanvasView: View {
                 isItalic: textEl.isItalic,
                 textColor: textEl.textColor.opacity(textEl.opacity),
                 alignment: textEl.alignment,
-                onEndEditing: { vm.endTextEdit() }
+                onEndEditing: { vm.endTextEdit() },
+                onSizeChange: { screenSize in
+                    // 화면 크기 → 캔버스 좌표계 크기로 변환
+                    let canvasSize = CGSize(
+                        width:  screenSize.width  / vm.zoom,
+                        height: screenSize.height / vm.zoom)
+                    vm.updateTextFrame(id: editingId, canvasSize: canvasSize)
+                }
             )
             .background(Color.accentColor.opacity(0.06))
             .overlay(
                 Rectangle()
                     .stroke(Color.accentColor, lineWidth: 1.5)
             )
-            .frame(
-                width: max(screenRect.width, 40),
-                height: max(screenRect.height, 28))
+            .frame(width: max(screenRect.width, 2), height: max(screenRect.height, 4))
             .rotationEffect(.degrees(textEl.rotation))
             .position(x: screenRect.midX, y: screenRect.midY)
             .zIndex(10)
@@ -154,6 +163,28 @@ struct DesignCanvasView: View {
                            height: mq.height * vm.zoom)
                     .position(x: mq.midX * vm.zoom, y: mq.midY * vm.zoom)
                     .allowsHitTesting(false)
+            }
+
+            // 중앙 정렬 스냅 가이드라인
+            if snapX {
+                let x = vm.project.canvasSize.width / 2 * vm.zoom
+                Path { p in
+                    p.move(to: CGPoint(x: x, y: 0))
+                    p.addLine(to: CGPoint(x: x, y: vm.project.canvasSize.height * vm.zoom))
+                }
+                .stroke(Color.cyan.opacity(0.85),
+                        style: StrokeStyle(lineWidth: 1, dash: [5, 3]))
+                .allowsHitTesting(false)
+            }
+            if snapY {
+                let y = vm.project.canvasSize.height / 2 * vm.zoom
+                Path { p in
+                    p.move(to: CGPoint(x: 0, y: y))
+                    p.addLine(to: CGPoint(x: vm.project.canvasSize.width * vm.zoom, y: y))
+                }
+                .stroke(Color.cyan.opacity(0.85),
+                        style: StrokeStyle(lineWidth: 1, dash: [5, 3]))
+                .allowsHitTesting(false)
             }
         }
         .frame(width: vm.project.canvasSize.width * vm.zoom,
@@ -209,9 +240,8 @@ extension DesignCanvasView {
             }
 
         case .text(let textEl):
-            guard textEl.isVisible else { return }
-            // 편집 중인 요소는 오버레이가 대신 렌더링하므로 건너뜀
-            if textEl.id == vm.editingTextElementId { return }
+            guard textEl.isVisible, textEl.id != vm.editingTextElementId else { return }
+            guard !textEl.text.isEmpty else { return }
             let rect = scaled(textEl.frame, by: z)
             let center = CGPoint(x: rect.midX, y: rect.midY)
             var font = NSFont(name: textEl.fontName, size: textEl.fontSize * z)
@@ -220,16 +250,35 @@ extension DesignCanvasView {
             if textEl.isItalic { font = NSFontManager.shared.convert(font, toHaveTrait: .italicFontMask) }
             let ps = NSMutableParagraphStyle()
             ps.alignment = textEl.alignment.nsAlignment
-            let attrs: [NSAttributedString.Key: Any] = [
+            let attrStr = NSAttributedString(string: textEl.text, attributes: [
                 .font: font,
                 .foregroundColor: NSColor(textEl.textColor),
-                .paragraphStyle: ps
-            ]
-            let attrStr = NSAttributedString(string: textEl.text, attributes: attrs)
+                .paragraphStyle: ps,
+            ])
+
+            // NSTextView도 내부적으로 NSLayoutManager.drawGlyphs(at: textContainerOrigin)를 사용한다.
+            // 동일한 메서드를 직접 호출해 렌더링 엔진을 완전히 일치시킴.
+            // → attrStr.draw(at:)와 달리 line-fragment 기준점이 정확히 (0,0)에서 시작됨.
+            let ts = NSTextStorage(attributedString: attrStr)
+            let lm = NSLayoutManager()
+            let tc = NSTextContainer(containerSize: CGSize(
+                width:  CGFloat.greatestFiniteMagnitude,
+                height: CGFloat.greatestFiniteMagnitude))
+            ts.addLayoutManager(lm)
+            lm.addTextContainer(tc)
+            lm.ensureLayout(for: tc)
+
+            let imgSize = CGSize(width: max(rect.width, 1), height: max(rect.height, 1))
+            // NSImage의 드로잉 핸들러는 디스플레이 스케일에 맞춰 자동 호출됨 (Retina 대응)
+            let img = NSImage(size: imgSize, flipped: true) { _ in
+                lm.drawGlyphs(forGlyphRange: lm.glyphRange(for: tc), at: .zero)
+                return true
+            }
             ctx.drawLayer { inner in
                 applyRotation(to: &inner, center: center, degrees: textEl.rotation)
                 inner.opacity = textEl.opacity
-                inner.draw(Text(AttributedString(attrStr)), in: rect)
+                // Image(nsImage:)는 논리적 크기 기준으로 그려줌 — cgImage 변환 불필요
+                inner.draw(Image(nsImage: img), in: rect)
             }
         }
     }
@@ -332,18 +381,19 @@ extension DesignCanvasView {
 // MARK: - Zoom gestures
 
 extension DesignCanvasView {
-    private var magnifyGesture: some Gesture {
-        MagnificationGesture()
-            .onChanged { value in
-                let delta = value / lastMagnification
-                // 민감도 감쇠: delta를 1.0 기준으로 60% 수준으로 줄임
-                let dampened = 1 + (delta - 1) * 0.6
-                vm.zoom = max(0.05, min(vm.zoom * dampened, 16.0))
-                lastMagnification = value
+    /// 핀치 줌 — MagnificationGesture 대신 NSEvent 모니터를 사용해
+    /// DragGesture와의 simultaneousGesture 조율 오버헤드(end 지연)를 제거한다.
+    private func setupMagnifyMonitor() {
+        guard magnifyMonitor == nil else { return }
+        magnifyMonitor = NSEvent.addLocalMonitorForEvents(matching: .magnify) { [hoverState] event in
+            guard hoverState.isHovering else { return event }
+            let delta = event.magnification  // +: 확대, -: 축소
+            DispatchQueue.main.async {
+                let dampened = 1 + delta * 0.6
+                self.vm.zoom = max(0.05, min(self.vm.zoom * dampened, 16.0))
             }
-            .onEnded { _ in
-                lastMagnification = 1.0
-            }
+            return event
+        }
     }
 
     private func setupScrollWheelZoom() {
@@ -561,9 +611,30 @@ extension DesignCanvasView {
                     switch transform {
                     case .moving(let startFrame, let startPoint):
                         guard let el = vm.selectedElement else { return }
+                        let canvasCenter = CGPoint(
+                            x: vm.project.canvasSize.width  / 2,
+                            y: vm.project.canvasSize.height / 2)
+                        let threshold: CGFloat = 8 / vm.zoom
+
+                        var newX = startFrame.minX + (pt.x - startPoint.x)
+                        var newY = startFrame.minY + (pt.y - startPoint.y)
+
+                        // X축 중앙 스냅 (레이어 midX ≈ 캔버스 수직 중심선)
+                        let proposedMidX = newX + startFrame.width  / 2
+                        let newSnapX = abs(proposedMidX - canvasCenter.x) < threshold
+                        if newSnapX { newX = canvasCenter.x - startFrame.width  / 2 }
+                        if newSnapX && !snapX { triggerAlignmentHaptic() }
+                        snapX = newSnapX
+
+                        // Y축 중앙 스냅 (레이어 midY ≈ 캔버스 수평 중심선)
+                        let proposedMidY = newY + startFrame.height / 2
+                        let newSnapY = abs(proposedMidY - canvasCenter.y) < threshold
+                        if newSnapY { newY = canvasCenter.y - startFrame.height / 2 }
+                        if newSnapY && !snapY { triggerAlignmentHaptic() }
+                        snapY = newSnapY
+
                         vm.setElementFrame(id: el.id, frame: CGRect(
-                            x: startFrame.minX + (pt.x - startPoint.x),
-                            y: startFrame.minY + (pt.y - startPoint.y),
+                            x: newX, y: newY,
                             width: startFrame.width,
                             height: startFrame.height))
 
@@ -632,6 +703,8 @@ extension DesignCanvasView {
 
                 if vm.activeTransform != nil {
                     vm.activeTransform = nil
+                    snapX = false
+                    snapY = false
                     cursorFor(endPt).set()
                     return
                 }
@@ -640,14 +713,23 @@ extension DesignCanvasView {
                     && abs(value.translation.height) < 4
                 if isTap {
                     if vm.selectedTool == .text {
-                        // 기존 텍스트 요소 클릭 → 편집 모드, 그 외 → 새 텍스트 생성
-                        let hit = vm.project.elements.reversed().first { $0.isVisible && $0.containsPoint(endPt) }
-                        if let hit, case .text(let t) = hit {
-                            vm.selectedElementIds = [t.id]
-                            vm.beginTextEdit(id: t.id)
+                        if let editingId = vm.editingTextElementId {
+                            // 편집 중: 현재 편집 중인 요소를 클릭 → 계속 편집
+                            //          그 외 어디를 클릭해도 → 편집 종료
+                            let editingEl = vm.project.elements.first { $0.id == editingId }
+                            let isSameElement = editingEl.map { $0.containsPoint(endPt) } ?? false
+                            if !isSameElement {
+                                vm.endTextEdit()
+                            }
                         } else {
-                            vm.endTextEdit()
-                            vm.createTextElement(at: endPt)
+                            // 편집 중 아님: 텍스트 요소 클릭 → 편집 시작, 빈 공간 클릭 → 새 생성
+                            let hit = vm.project.elements.reversed().first { $0.isVisible && $0.containsPoint(endPt) }
+                            if let hit, case .text(let t) = hit {
+                                vm.selectedElementIds = [t.id]
+                                vm.beginTextEdit(id: t.id)
+                            } else {
+                                vm.createTextElement(at: endPt)
+                            }
                         }
                     } else {
                         // 다른 도구 탭: 텍스트 편집 중이면 종료
@@ -718,6 +800,13 @@ extension DesignCanvasView {
                 .rotated(by: rad)
                 .translatedBy(x: -center.x, y: -center.y)
         )
+    }
+
+    /// 트랙패드 정렬 햅틱 — 레이어가 캔버스 중앙에 스냅될 때 호출
+    private func triggerAlignmentHaptic() {
+        NSHapticFeedbackManager.defaultPerformer.perform(
+            .alignment,
+            performanceTime: .drawCompleted)
     }
 }
 

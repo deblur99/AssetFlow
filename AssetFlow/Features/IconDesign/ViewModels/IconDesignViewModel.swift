@@ -66,6 +66,18 @@ final class IconDesignViewModel {
     var cornerRadius: CGFloat = 0
     var currentOpacity: Double = 1.0
 
+    // MARK: - Text style defaults
+    var textFontName: String = "Helvetica"
+    var textFontSize: CGFloat = 100
+    var textIsBold: Bool = false
+    var textIsItalic: Bool = false
+    var textColor: Color = .black
+    var textAlignment: TextAlignmentOption = .left
+
+    // MARK: - Text editing state
+    /// 현재 인라인 편집기가 열려 있는 텍스트 요소 ID. nil이면 편집기가 닫혀 있음.
+    var editingTextElementId: UUID? = nil
+
     // MARK: - Viewport
     var zoom: CGFloat = 1.0
     var canvasOffset: CGSize = .zero
@@ -133,7 +145,7 @@ final class IconDesignViewModel {
             }
             activeDragCurrent = point
 
-        case .move, .select:
+        case .move, .select, .text:
             break
         }
     }
@@ -155,7 +167,6 @@ final class IconDesignViewModel {
             project.addElement(.path(pathEl))
             activePathPoints = []
             if let id = project.elements.last?.id { selectedElementIds = [id] }
-            selectedTool = .select
 
         case .rectangle, .ellipse:
             guard let start = activeDragStart, let end = activeDragCurrent else {
@@ -186,7 +197,7 @@ final class IconDesignViewModel {
             }
             selectedTool = .select
 
-        case .move, .select:
+        case .move, .select, .text:
             break
         }
     }
@@ -261,11 +272,12 @@ final class IconDesignViewModel {
             let dy = newFrame.minY - e.frame.minY
             e.points = e.points.map { CGPoint(x: $0.x + dx, y: $0.y + dy) }
             project.elements[idx] = .path(e)
+        case .text(var e):
+            e.frame = newFrame
+            project.elements[idx] = .text(e)
         }
         project.updatedAt = Date()
     }
-
-    /// Sets the rotation (degrees) of the element.
     func setElementRotation(id: UUID, rotation: Double) {
         guard let idx = project.elements.firstIndex(where: { $0.id == id }) else { return }
         project.elements[idx].rotation = rotation
@@ -320,7 +332,107 @@ final class IconDesignViewModel {
         case .image(var e):
             if let v = opacity { e.opacity = v }
             project.elements[idx] = .image(e)
+        case .text(var e):
+            if let v = opacity { e.opacity = v }
+            project.elements[idx] = .text(e)
         }
+        project.updatedAt = Date()
+    }
+
+    // MARK: - Text element management
+
+    func createTextElement(at point: CGPoint) {
+        checkpoint()
+        // 초기 높이: 정확한 폰트 메트릭으로 한 줄 높이
+        let nsFont = NSFont(name: textFontName, size: textFontSize)
+            ?? NSFont.systemFont(ofSize: textFontSize)
+        let lineH = ceil(nsFont.ascender - nsFont.descender + nsFont.leading)
+        // origin = 클릭 지점(좌측 상단). 세로 중앙은 ascender/descender로 자동 결정됨.
+        // 초기 너비는 0 — reportSize가 즉시 실제 크기로 갱신함
+        let frame = CGRect(x: point.x, y: point.y, width: 0, height: lineH)
+        let el = TextElement(
+            id: UUID(),
+            name: "Text \(project.elements.count + 1)",
+            frame: frame,
+            text: "",
+            fontName: textFontName,
+            fontSize: textFontSize,
+            isBold: textIsBold,
+            isItalic: textIsItalic,
+            textColor: textColor,
+            alignment: textAlignment)
+        project.addElement(.text(el))
+        if let id = project.elements.last?.id {
+            selectedElementIds = [id]
+            editingTextElementId = id
+        }
+        project.updatedAt = Date()
+    }
+
+    /// 인라인 편집기에서 측정된 크기(캔버스 좌표계)로 텍스트 요소 frame을 갱신한다.
+    /// checkpoint 없이 직접 갱신 — 타이핑마다 undo 스택을 쌓지 않음.
+    func updateTextFrame(id: UUID, canvasSize: CGSize) {
+        guard let idx = project.elements.firstIndex(where: { $0.id == id }),
+              case .text(var e) = project.elements[idx] else { return }
+        e.frame = CGRect(origin: e.frame.origin, size: canvasSize)
+        project.elements[idx] = .text(e)
+    }
+
+    func beginTextEdit(id: UUID) {
+        guard project.elements.first(where: { $0.id == id }) != nil else { return }
+        editingTextElementId = id
+    }
+
+    func endTextEdit() {
+        // 빈 텍스트 요소는 자동 삭제
+        if let id = editingTextElementId,
+           let el = project.elements.first(where: { $0.id == id }),
+           case .text(let t) = el, t.text.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty {
+            deleteElement(id: id)
+        }
+        editingTextElementId = nil
+        // 편집 종료와 동시에 선택도 해제 — "포커스" 상태로 남지 않도록
+        selectedElementIds = []
+    }
+
+    func updateTextContent(id: UUID, text: String) {
+        guard let idx = project.elements.firstIndex(where: { $0.id == id }),
+              case .text(var e) = project.elements[idx] else { return }
+        e.text = text
+        project.elements[idx] = .text(e)
+        project.updatedAt = Date()
+    }
+
+    /// 선택된 모든 텍스트 요소의 타이포그래피 속성을 일괄 업데이트한다.
+    func updateSelectedTextStyle(
+        fontName:  String?              = nil,
+        fontSize:  CGFloat?             = nil,
+        isBold:    Bool?                = nil,
+        isItalic:  Bool?                = nil,
+        textColor: Color?               = nil,
+        alignment: TextAlignmentOption? = nil
+    ) {
+        checkpoint()
+        for id in selectedElementIds {
+            guard let idx = project.elements.firstIndex(where: { $0.id == id }),
+                  case .text(var e) = project.elements[idx] else { continue }
+            e.show()
+            if let v = fontName  { e.fontName  = v }
+            if let v = fontSize  { e.fontSize  = v }
+            if let v = isBold    { e.isBold    = v }
+            if let v = isItalic  { e.isItalic  = v }
+            if let v = textColor { e.textColor = v }
+            if let v = alignment { e.alignment = v }
+            e.show()
+            project.elements[idx] = .text(e)
+        }
+        // 기본값도 함께 업데이트
+        if let v = fontName  { textFontName  = v }
+        if let v = fontSize  { textFontSize  = v }
+        if let v = isBold    { textIsBold    = v }
+        if let v = isItalic  { textIsItalic  = v }
+        if let v = textColor { self.textColor = v }
+        if let v = alignment { textAlignment = v }
         project.updatedAt = Date()
     }
 

@@ -1,5 +1,50 @@
 import SwiftUI
 
+// MARK: - Text alignment
+
+nonisolated enum TextAlignmentOption: Int, CaseIterable {
+    case left, center, right
+
+    var nsAlignment: NSTextAlignment {
+        switch self {
+        case .left:   return .left
+        case .center: return .center
+        case .right:  return .right
+        }
+    }
+
+    var sfSymbol: String {
+        switch self {
+        case .left:   return "text.alignleft"
+        case .center: return "text.aligncenter"
+        case .right:  return "text.alignright"
+        }
+    }
+}
+
+// MARK: - Text element
+
+nonisolated struct TextElement: Identifiable {
+    var id: UUID         = UUID()
+    var name: String     = "Text"
+    var isVisible: Bool  = true
+    var isLocked: Bool   = false
+    var opacity: Double  = 1.0
+    var rotation: Double = 0   // degrees
+    var frame: CGRect
+    var text: String     = ""
+    var fontName: String = "Helvetica"
+    var fontSize: CGFloat = 100
+    var isBold: Bool     = false
+    var isItalic: Bool   = false
+    var textColor: Color = .black
+    var alignment: TextAlignmentOption = .left
+    
+    func show() {
+        print("TextElement: \(text) at \(frame.origin), font: \(fontName) \(fontSize)pt, color: \(textColor), alignment: \(alignment)")
+    }
+}
+
 // MARK: - Leaf element types
 
 nonisolated struct ShapeElement: Identifiable {
@@ -56,12 +101,14 @@ nonisolated enum CanvasElement: Identifiable {
     case shape(ShapeElement)
     case path(PathElement)
     case image(ImageElement)
+    case text(TextElement)
 
     var id: UUID {
         switch self {
         case .shape(let e): e.id
         case .path(let e):  e.id
         case .image(let e): e.id
+        case .text(let e):  e.id
         }
     }
 
@@ -71,6 +118,7 @@ nonisolated enum CanvasElement: Identifiable {
             case .shape(let e): e.name
             case .path(let e):  e.name
             case .image(let e): e.name
+            case .text(let e):  e.name
             }
         }
         set {
@@ -78,6 +126,7 @@ nonisolated enum CanvasElement: Identifiable {
             case .shape(var e): e.name = newValue; self = .shape(e)
             case .path(var e):  e.name = newValue; self = .path(e)
             case .image(var e): e.name = newValue; self = .image(e)
+            case .text(var e):  e.name = newValue; self = .text(e)
             }
         }
     }
@@ -88,6 +137,7 @@ nonisolated enum CanvasElement: Identifiable {
             case .shape(let e): e.isVisible
             case .path(let e):  e.isVisible
             case .image(let e): e.isVisible
+            case .text(let e):  e.isVisible
             }
         }
         set {
@@ -95,6 +145,7 @@ nonisolated enum CanvasElement: Identifiable {
             case .shape(var e): e.isVisible = newValue; self = .shape(e)
             case .path(var e):  e.isVisible = newValue; self = .path(e)
             case .image(var e): e.isVisible = newValue; self = .image(e)
+            case .text(var e):  e.isVisible = newValue; self = .text(e)
             }
         }
     }
@@ -104,6 +155,7 @@ nonisolated enum CanvasElement: Identifiable {
         case .shape(let e): e.frame
         case .path(let e):  e.frame
         case .image(let e): e.frame
+        case .text(let e):  e.frame
         }
     }
 
@@ -113,6 +165,7 @@ nonisolated enum CanvasElement: Identifiable {
             case .shape(let e): e.opacity
             case .path(let e):  e.opacity
             case .image(let e): e.opacity
+            case .text(let e):  e.opacity
             }
         }
         set {
@@ -120,6 +173,7 @@ nonisolated enum CanvasElement: Identifiable {
             case .shape(var e): e.opacity = newValue; self = .shape(e)
             case .path(var e):  e.opacity = newValue; self = .path(e)
             case .image(var e): e.opacity = newValue; self = .image(e)
+            case .text(var e):  e.opacity = newValue; self = .text(e)
             }
         }
     }
@@ -130,6 +184,7 @@ nonisolated enum CanvasElement: Identifiable {
             case .shape(let e): e.rotation
             case .path(let e):  e.rotation
             case .image(let e): e.rotation
+            case .text(let e):  e.rotation
             }
         }
         set {
@@ -137,6 +192,7 @@ nonisolated enum CanvasElement: Identifiable {
             case .shape(var e): e.rotation = newValue; self = .shape(e)
             case .path(var e):  e.rotation = newValue; self = .path(e)
             case .image(var e): e.rotation = newValue; self = .image(e)
+            case .text(var e):  e.rotation = newValue; self = .text(e)
             }
         }
     }
@@ -182,6 +238,12 @@ nonisolated enum CanvasElement: Identifiable {
                 frame: e.frame.offsetBy(dx: offset, dy: offset),
                 image: e.image)
             return .image(moved)
+        case .text(let e):
+            var copy = e
+            copy.id = UUID()
+            copy.name = e.name + " Copy"
+            copy.frame = e.frame.offsetBy(dx: offset, dy: offset)
+            return .text(copy)
         }
     }
 

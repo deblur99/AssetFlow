@@ -9,15 +9,143 @@ struct PropertiesPanelView: View {
                 VStack(spacing: 0) {
                     transformSection
                     Divider()
+                    constraintsSection
+                    Divider()
                     styleSection
+                    if hasTextSelection {
+                        Divider()
+                        typographySection
+                    }
                 }
             }
-            .frame(minHeight: 160)
+            .frame(minHeight: 500)
 
             layersSection
                 .frame(minHeight: 60)
         }
         .background(Color(nsColor: .controlBackgroundColor))
+    }
+
+    // MARK: - Text selection helpers
+
+    private var hasTextSelection: Bool {
+        vm.selectedElementIds.contains { id in
+            vm.project.elements.first { $0.id == id }.map {
+                if case .text = $0 { return true }
+                return false
+            } ?? false
+        }
+    }
+
+    private var firstSelectedText: TextElement? {
+        for id in vm.selectedElementIds {
+            if let el = vm.project.elements.first(where: { $0.id == id }),
+               case .text(let t) = el { return t }
+        }
+        return nil
+    }
+
+    // MARK: - Constraints section
+
+    private var constraintsSection: some View {
+        GroupBox("Constraints") {
+            VStack(alignment: .leading, spacing: 6) {
+                if let el = vm.selectedElement {
+                    let f = el.frame
+                    let cw = vm.project.canvasSize.width
+                    let ch = vm.project.canvasSize.height
+
+                    // ── 상단 엣지 ────────────────────────────────────────────
+                    HStack {
+                        Spacer()
+                        constraintField(label: "↑", value: f.minY) { v in
+                            vm.setElementFrame(id: el.id, frame: CGRect(
+                                x: f.minX, y: v,
+                                width: f.width, height: f.height
+                            ))
+                        }
+                        Spacer()
+                    }
+
+                    // ── 좌·우 엣지 + 캔버스 미니맵 ──────────────────────────
+                    HStack(spacing: 6) {
+                        constraintField(label: "←", value: f.minX) { v in
+                            vm.setElementFrame(id: el.id, frame: CGRect(
+                                x: v, y: f.minY,
+                                width: f.width, height: f.height
+                            ))
+                        }
+
+                        // 캔버스 + 레이어 위치 미니맵
+                        ConstraintsMinimap(elementFrame: f, canvasSize: CGSize(width: cw, height: ch))
+                            .frame(width: 36, height: 36)
+
+                        constraintField(label: "→", value: cw - f.maxX) { v in
+                            vm.setElementFrame(id: el.id, frame: CGRect(
+                                x: cw - f.width - v, y: f.minY,
+                                width: f.width, height: f.height
+                            ))
+                        }
+                    }
+
+                    // ── 하단 엣지 ────────────────────────────────────────────
+                    HStack {
+                        Spacer()
+                        constraintField(label: "↓", value: ch - f.maxY) { v in
+                            vm.setElementFrame(id: el.id, frame: CGRect(
+                                x: f.minX, y: ch - f.height - v,
+                                width: f.width, height: f.height
+                            ))
+                        }
+                        Spacer()
+                    }
+
+                    // ── 중앙 정렬 버튼 ────────────────────────────────────────
+                    HStack(spacing: 6) {
+                        Button {
+                            vm.setElementFrame(id: el.id, frame: CGRect(
+                                x: (cw - f.width) / 2, y: f.minY,
+                                width: f.width, height: f.height
+                            ))
+                        } label: {
+                            Label("Center X", systemImage: "arrow.left.and.right")
+                                .font(.caption)
+                                .frame(maxWidth: .infinity)
+                        }
+                        .buttonStyle(.bordered)
+                        .controlSize(.small)
+
+                        Button {
+                            vm.setElementFrame(id: el.id, frame: CGRect(
+                                x: f.minX, y: (ch - f.height) / 2,
+                                width: f.width, height: f.height
+                            ))
+                        } label: {
+                            Label("Center Y", systemImage: "arrow.up.and.down")
+                                .font(.caption)
+                                .frame(maxWidth: .infinity)
+                        }
+                        .buttonStyle(.bordered)
+                        .controlSize(.small)
+                    }
+                } else {
+                    Text("No selection")
+                        .font(.caption)
+                        .foregroundStyle(.tertiary)
+                        .frame(maxWidth: .infinity, alignment: .center)
+                        .padding(.vertical, 4)
+                }
+            }
+            .padding(2)
+        }
+        .padding(8)
+    }
+
+    private func constraintField(label: String,
+                                 value: CGFloat,
+                                 onSubmit: @escaping (CGFloat) -> Void) -> some View
+    {
+        TransformFieldView(label: label, value: value, onSubmit: onSubmit)
     }
 
     // MARK: - Transform section
@@ -32,10 +160,10 @@ struct PropertiesPanelView: View {
                         transformField(label: "Y", value: f.minY) { vm.setElementTransform(id: el.id, y: $0) }
                     }
                     HStack(spacing: 8) {
-                        transformField(label: "W", value: f.width)  { vm.setElementTransform(id: el.id, width: $0) }
+                        transformField(label: "W", value: f.width) { vm.setElementTransform(id: el.id, width: $0) }
                         transformField(label: "H", value: f.height) { vm.setElementTransform(id: el.id, height: $0) }
                     }
-                    
+
                     HStack(spacing: 8) {
                         transformField(label: "°", value: CGFloat(el.rotation)) {
                             vm.setElementTransform(id: el.id, rotation: Double($0))
@@ -58,8 +186,9 @@ struct PropertiesPanelView: View {
     }
 
     private func transformField(label: String,
-                                 value: CGFloat,
-                                 onSubmit: @escaping (CGFloat) -> Void) -> some View {
+                                value: CGFloat,
+                                onSubmit: @escaping (CGFloat) -> Void) -> some View
+    {
         TransformFieldView(label: label, value: value, onSubmit: onSubmit)
     }
 
@@ -107,10 +236,15 @@ struct PropertiesPanelView: View {
                                   value: Binding(get: { CGFloat(i.opacity * 100) },
                                                  set: { vm.updateSelectedStyle(opacity: Double($0 / 100)) }),
                                   range: 0...100, format: "%.0f%%")
+                    case .text(let t):
+                        sliderRow(label: "Opacity",
+                                  value: Binding(get: { CGFloat(t.opacity * 100) },
+                                                 set: { vm.updateSelectedStyle(opacity: Double($0 / 100)) }),
+                                  range: 0...100, format: "%.0f%%")
                     }
                 } else {
                     // ── 기본값 편집 모드 (새 도형에 적용) ────────────────
-                    colorRow(label: "Fill",   value: vm.fillColor,   onChange: { vm.fillColor   = $0 })
+                    colorRow(label: "Fill", value: vm.fillColor, onChange: { vm.fillColor = $0 })
                     colorRow(label: "Stroke", value: vm.strokeColor, onChange: { vm.strokeColor = $0 })
                     sliderRow(label: "Width",
                               value: $vm.lineWidth, range: 0.5...40,
@@ -162,6 +296,112 @@ struct PropertiesPanelView: View {
                 .monospacedDigit()
                 .frame(width: 38, alignment: .trailing)
         }
+    }
+
+    // MARK: - Typography section
+
+    // 자주 쓰이는 서체 목록
+    private static let availableFonts: [String] = [
+        "Helvetica", "Helvetica Neue", "Arial", "Georgia",
+        "Times New Roman", "Courier New", "Futura",
+        "SF Pro Display", "SF Pro Text"
+    ]
+
+    private var typographySection: some View {
+        GroupBox("Typography") {
+            VStack(alignment: .leading, spacing: 10) {
+                // 서체
+                HStack {
+                    Text("Font")
+                        .font(.caption)
+                        .foregroundStyle(.secondary)
+                        .frame(width: 46, alignment: .leading)
+                    Picker("", selection: Binding(
+                        get: { firstSelectedText?.fontName ?? vm.textFontName },
+                        set: { vm.updateSelectedTextStyle(fontName: $0) }
+                    )) {
+                        ForEach(Self.availableFonts, id: \.self) { name in
+                            Text(name).tag(name)
+                        }
+                    }
+                    .labelsHidden()
+                    .pickerStyle(.menu)
+                }
+
+                // 크기
+                sliderRow(
+                    label: "Size",
+                    value: Binding(
+                        get: { firstSelectedText?.fontSize ?? vm.textFontSize },
+                        set: { vm.updateSelectedTextStyle(fontSize: $0) }
+                    ),
+                    range: 6...200,
+                    format: "%.0f"
+                )
+
+                // 스타일 (굵기, 기울기)
+                HStack {
+                    Text("Style")
+                        .font(.caption)
+                        .foregroundStyle(.secondary)
+                        .frame(width: 46, alignment: .leading)
+                    Toggle(isOn: Binding(
+                        get: { firstSelectedText?.isBold ?? vm.textIsBold },
+                        set: { vm.updateSelectedTextStyle(isBold: $0) }
+                    )) {
+                        Image(systemName: "bold")
+                            .font(.caption)
+                    }
+                    .toggleStyle(.button)
+                    .controlSize(.small)
+                    Toggle(isOn: Binding(
+                        get: { firstSelectedText?.isItalic ?? vm.textIsItalic },
+                        set: { vm.updateSelectedTextStyle(isItalic: $0) }
+                    )) {
+                        Image(systemName: "italic")
+                            .font(.caption)
+                    }
+                    .toggleStyle(.button)
+                    .controlSize(.small)
+                    Spacer()
+                }
+
+                // 색상
+                colorRow(
+                    label: "Color",
+                    value: firstSelectedText?.textColor ?? vm.textColor,
+                    onChange: { vm.updateSelectedTextStyle(textColor: $0) }
+                )
+
+                // 정렬
+                HStack {
+                    Text("Align")
+                        .font(.caption)
+                        .foregroundStyle(.secondary)
+                        .frame(width: 46, alignment: .leading)
+                    HStack(spacing: 4) {
+                        ForEach(TextAlignmentOption.allCases, id: \.rawValue) { opt in
+                            let isSelected = (firstSelectedText?.alignment ?? vm.textAlignment) == opt
+
+                            Button {
+                                vm.updateSelectedTextStyle(alignment: opt)
+                            } label: {
+                                Image(systemName: opt.sfSymbol)
+                                    .resizable()
+                                    .scaledToFit()
+                                    .frame(width: 12)
+                            }
+                            .buttonStyle(.plain)
+                            .padding(4)
+                            .background(isSelected ? Color.accentColor.opacity(0.2) : Color.clear)
+                            .clipShape(RoundedRectangle(cornerRadius: 4))
+                        }
+                    }
+                }
+            }
+            .padding(2)
+        }
+        .padding(8)
     }
 
     // MARK: - Layers section
@@ -218,6 +458,8 @@ private struct TransformFieldView: View {
                 .onChange(of: value) { _, v in
                     if !isFocused { text = formatted(v) }
                 }
+                .onKeyPress(.upArrow) { step(+1); return .handled }
+                .onKeyPress(.downArrow) { step(-1); return .handled }
         }
         .frame(maxWidth: .infinity)
     }
@@ -225,6 +467,13 @@ private struct TransformFieldView: View {
     private func commitValue() {
         if let v = Double(text) { onSubmit(CGFloat(v)) }
         else { text = formatted(value) }
+    }
+
+    private func step(_ delta: CGFloat) {
+        let current = Double(text) ?? Double(value)
+        let next = CGFloat(current) + delta
+        text = formatted(next)
+        onSubmit(next)
     }
 
     private func formatted(_ v: CGFloat) -> String {
@@ -269,8 +518,46 @@ private struct LayerRowView: View {
     private var iconName: String {
         switch element {
         case .shape(let s): s.shapeType == .ellipse ? "circle" : "rectangle"
-        case .path:         "scribble"
-        case .image:        "photo"
+        case .path: "scribble"
+        case .image: "photo"
+        case .text: "textformat"
         }
     }
+}
+
+// MARK: - Constraints minimap
+
+/// 캔버스 내 레이어 위치를 작게 시각화하는 미니맵 뷰
+private struct ConstraintsMinimap: View {
+    let elementFrame: CGRect
+    let canvasSize: CGSize
+
+    var body: some View {
+        Canvas { ctx, size in
+            // 캔버스 배경
+            let canvasRect = CGRect(origin: .zero, size: size)
+            ctx.fill(Path(canvasRect), with: .color(Color(nsColor: .controlBackgroundColor)))
+            ctx.stroke(Path(roundedRect: canvasRect, cornerRadius: 1.5),
+                       with: .color(Color.secondary.opacity(0.4)),
+                       lineWidth: 0.5)
+
+            // 레이어 위치 비율 계산 → 미니맵 좌표로 변환
+            let scaleX = size.width / canvasSize.width
+            let scaleY = size.height / canvasSize.height
+            let elRect = CGRect(
+                x: elementFrame.minX * scaleX,
+                y: elementFrame.minY * scaleY,
+                width: max(elementFrame.width * scaleX, 2),
+                height: max(elementFrame.height * scaleY, 2)
+            )
+            ctx.fill(Path(roundedRect: elRect, cornerRadius: 0.5),
+                     with: .color(Color.accentColor.opacity(0.7)))
+        }
+        .clipShape(RoundedRectangle(cornerRadius: 2))
+    }
+}
+
+#Preview {
+    PropertiesPanelView(vm: IconDesignViewModel())
+        .frame(width: 240, height: 700)
 }

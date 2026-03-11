@@ -28,7 +28,7 @@ nonisolated enum DrawingExtraTool: String, ToolItem {
 
     var helpText: String {
         switch self {
-        case .imagePicker: return "Import Image — ⌘i"
+        case .imagePicker: return "Import Image — ⌘I"
         }
     }
 }

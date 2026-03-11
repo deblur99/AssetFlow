@@ -6,6 +6,7 @@ nonisolated enum DrawingTool: String, ToolItem {
     case pen = "Pen"
     case rectangle = "Rectangle"
     case ellipse = "Ellipse"
+    case text = "Text"
 
     var id: String { rawValue }
 
@@ -16,6 +17,7 @@ nonisolated enum DrawingTool: String, ToolItem {
         case .pen: return "pencil"
         case .rectangle: return "rectangle"
         case .ellipse: return "circle"
+        case .text: return "text.cursor"
         }
     }
 
@@ -26,6 +28,7 @@ nonisolated enum DrawingTool: String, ToolItem {
         case .pen: return "3"
         case .rectangle: return "4"
         case .ellipse: return "5"
+        case .text: return "T"
         }
     }
 
@@ -36,6 +39,7 @@ nonisolated enum DrawingTool: String, ToolItem {
         case .pen: return "Pen — ⌘3"
         case .rectangle: return "Rectangle — ⌘4"
         case .ellipse: return "Ellipse — ⌘5"
+        case .text: return "Text — ⌘T"
         }
     }
 }
