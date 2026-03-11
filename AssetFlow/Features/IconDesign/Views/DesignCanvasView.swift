@@ -12,7 +12,6 @@ struct DesignCanvasView: View {
     @State private var scrollMonitor: Any?
     @State private var isPanning = false
     @State private var panStartOffset: CGSize = .zero
-    @State private var viewportSize: CGSize = .zero
     /// 선택 모드에서 드래그로 그리는 마키 사각형 (캔버스 좌표)
     @State private var marqueeRect: CGRect?
     private class HoverState { var isHovering = false }
@@ -22,24 +21,16 @@ struct DesignCanvasView: View {
         GeometryReader { geometry in
             ZStack {
                 Color(nsColor: .underPageBackgroundColor)
-                    .gesture(backgroundPanGesture)
                 
                 canvasLayer
                     .shadow(color: .black.opacity(0.2), radius: 8, x: 0, y: 4)
-                    .contentShape(Rectangle())
                     .position(
                         x: geometry.size.width / 2 + vm.canvasOffset.width,
                         y: geometry.size.height / 2 + vm.canvasOffset.height)
-                    .gesture(interactionGesture)
-                    .onContinuousHover { phase in
-                        switch phase {
-                        case .active(let location):
-                            cursorFor(canvasCoord(from: location)).set()
-                        case .ended:
-                            NSCursor.arrow.set()
-                        }
-                    }
                 
+                // 인라인 텍스트 편집기 오버레이 (편집 모드일 때만 표시)
+                textEditorOverlay(viewSize: geometry.size)
+
                 TipBannerView(isPresented: $vm.isTipBannerPresented)
                     .frame(
                         maxWidth: .infinity,
@@ -49,23 +40,27 @@ struct DesignCanvasView: View {
             }
             .frame(maxWidth: .infinity, maxHeight: .infinity)
             .clipped()
+            // geometry.size를 직접 전달 — @State 타이밍 문제 없이 항상 최신 크기 사용
+            .gesture(makeInteractionGesture(viewSize: geometry.size))
             .onContinuousHover { phase in
-                if case .active = phase { hoverState.isHovering = true }
-                else { hoverState.isHovering = false }
+                switch phase {
+                case .active(let location):
+                    hoverState.isHovering = true
+                    cursorFor(canvasCoord(from: location, viewSize: geometry.size)).set()
+                case .ended:
+                    hoverState.isHovering = false
+                    NSCursor.arrow.set()
+                }
             }
             .simultaneousGesture(magnifyGesture)
             .onAppear {
-                    viewportSize = geometry.size
-                    vm.zoomToFit(in: geometry.size)
-                    setupScrollWheelZoom()
-                }
-                .onDisappear {
-                    if let m = scrollMonitor { NSEvent.removeMonitor(m) }
-                }
-                .onChange(of: geometry.size) { _, s in
-                    viewportSize = s
-                    vm.zoomToFit(in: s)
-                }
+                vm.zoomToFit(in: geometry.size)
+                setupScrollWheelZoom()
+            }
+            .onDisappear {
+                if let m = scrollMonitor { NSEvent.removeMonitor(m) }
+            }
+            .onChange(of: geometry.size) { _, s in vm.zoomToFit(in: s) }
             .overlay(alignment: .bottomTrailing) {
                 MinimapView(
                     canvasSize: vm.project.canvasSize,
@@ -74,6 +69,44 @@ struct DesignCanvasView: View {
                     viewportSize: geometry.size)
                     .padding(12)
             }
+        }
+        // GeometryReader 자체에 이름을 붙여 항상 이 뷰의 로컬 좌표계를 기준으로 삼음
+        .coordinateSpace(.named("viewport"))
+    }
+
+    // MARK: - Inline text editor overlay
+
+    @ViewBuilder
+    private func textEditorOverlay(viewSize: CGSize) -> some View {
+        if let editingId = vm.editingTextElementId,
+           let element = vm.project.elements.first(where: { $0.id == editingId }),
+           case .text(let textEl) = element
+        {
+            let screenRect = canvasRectToScreen(textEl.frame, viewSize: viewSize)
+            InlineTextEditor(
+                text: Binding(
+                    get: { textEl.text },
+                    set: { vm.updateTextContent(id: editingId, text: $0) }
+                ),
+                fontName: textEl.fontName,
+                fontSize: textEl.fontSize * vm.zoom,
+                isBold: textEl.isBold,
+                isItalic: textEl.isItalic,
+                textColor: textEl.textColor.opacity(textEl.opacity),
+                alignment: textEl.alignment,
+                onEndEditing: { vm.endTextEdit() }
+            )
+            .background(Color.accentColor.opacity(0.06))
+            .overlay(
+                Rectangle()
+                    .stroke(Color.accentColor, lineWidth: 1.5)
+            )
+            .frame(
+                width: max(screenRect.width, 40),
+                height: max(screenRect.height, 28))
+            .rotationEffect(.degrees(textEl.rotation))
+            .position(x: screenRect.midX, y: screenRect.midY)
+            .zIndex(10)
         }
     }
 
@@ -174,6 +207,30 @@ extension DesignCanvasView {
                 inner.opacity = imgEl.opacity
                 inner.draw(Image(cg, scale: 1.0, label: Text(imgEl.name)), in: rect)
             }
+
+        case .text(let textEl):
+            guard textEl.isVisible else { return }
+            // 편집 중인 요소는 오버레이가 대신 렌더링하므로 건너뜀
+            if textEl.id == vm.editingTextElementId { return }
+            let rect = scaled(textEl.frame, by: z)
+            let center = CGPoint(x: rect.midX, y: rect.midY)
+            var font = NSFont(name: textEl.fontName, size: textEl.fontSize * z)
+                ?? NSFont.systemFont(ofSize: textEl.fontSize * z)
+            if textEl.isBold   { font = NSFontManager.shared.convert(font, toHaveTrait: .boldFontMask)   }
+            if textEl.isItalic { font = NSFontManager.shared.convert(font, toHaveTrait: .italicFontMask) }
+            let ps = NSMutableParagraphStyle()
+            ps.alignment = textEl.alignment.nsAlignment
+            let attrs: [NSAttributedString.Key: Any] = [
+                .font: font,
+                .foregroundColor: NSColor(textEl.textColor),
+                .paragraphStyle: ps
+            ]
+            let attrStr = NSAttributedString(string: textEl.text, attributes: attrs)
+            ctx.drawLayer { inner in
+                applyRotation(to: &inner, center: center, degrees: textEl.rotation)
+                inner.opacity = textEl.opacity
+                inner.draw(Text(AttributedString(attrStr)), in: rect)
+            }
         }
     }
 
@@ -247,9 +304,8 @@ extension DesignCanvasView {
         switch vm.selectedTool {
         case .move: return isPanning ? .closedHand : .openHand
         case .select: return .crosshair
-        case .pen, .rectangle, .ellipse: return .crosshair
-        }
-    }
+        case .pen, .rectangle, .ellipse, .text: return .crosshair
+        }    }
 
     private func resizeCursor(for handle: ResizeHandle, rotation: Double) -> NSCursor {
         let angle = handleScreenAngle(handle, rotation: rotation)
@@ -276,24 +332,6 @@ extension DesignCanvasView {
 // MARK: - Zoom gestures
 
 extension DesignCanvasView {
-    private var backgroundPanGesture: some Gesture {
-        DragGesture(minimumDistance: 4)
-            .onChanged { value in
-                if !isPanning {
-                    isPanning = true
-                    panStartOffset = vm.canvasOffset
-                }
-                vm.canvasOffset = CGSize(
-                    width: panStartOffset.width + value.translation.width,
-                    height: panStartOffset.height + value.translation.height)
-                NSCursor.closedHand.set()
-            }
-            .onEnded { _ in
-                isPanning = false
-                NSCursor.openHand.set()
-            }
-    }
-
     private var magnifyGesture: some Gesture {
         MagnificationGesture()
             .onChanged { value in
@@ -327,8 +365,9 @@ extension DesignCanvasView {
             let dx: CGFloat
             let dy: CGFloat
             if event.modifierFlags.contains(.shift) {
-                // shift+스크롤: 수평 이동
-                dx = event.scrollingDeltaY
+                // macOS가 shift+스크롤을 scrollingDeltaX로 변환하는 경우와 그렇지 않은 경우 모두 처리
+                let rawDelta = event.scrollingDeltaX != 0 ? event.scrollingDeltaX : event.scrollingDeltaY
+                dx = rawDelta
                 dy = 0
             } else {
                 dx = event.scrollingDeltaX
@@ -346,11 +385,11 @@ extension DesignCanvasView {
 // MARK: - Unified interaction gesture
 
 extension DesignCanvasView {
-    private var interactionGesture: some Gesture {
-        DragGesture(minimumDistance: 0)
+    private func makeInteractionGesture(viewSize: CGSize) -> some Gesture {
+        DragGesture(minimumDistance: 0, coordinateSpace: .named("viewport"))
             .onChanged { value in
-                let pt = canvasCoord(from: value.location)
-                let start = canvasCoord(from: value.startLocation)
+                let pt = canvasCoord(from: value.location, viewSize: viewSize)
+                let start = canvasCoord(from: value.startLocation, viewSize: viewSize)
 
                 // ── Begin phase ─────────────────────────────────────────────
                 if vm.activeTransform == nil
@@ -359,6 +398,18 @@ extension DesignCanvasView {
                     && vm.activeDragStart == nil
                     && marqueeRect == nil
                 {
+                    // ── 캔버스 영역 바깥 클릭 → 항상 패닝 ──────────────────────
+                    let canvasBounds = CGRect(
+                        x: viewSize.width  / 2 + vm.canvasOffset.width  - vm.project.canvasSize.width  * vm.zoom / 2,
+                        y: viewSize.height / 2 + vm.canvasOffset.height - vm.project.canvasSize.height * vm.zoom / 2,
+                        width:  vm.project.canvasSize.width  * vm.zoom,
+                        height: vm.project.canvasSize.height * vm.zoom)
+                    if !canvasBounds.contains(value.startLocation) {
+                        isPanning = true
+                        panStartOffset = vm.canvasOffset
+                        NSCursor.closedHand.set()
+                        return
+                    }
                     // ── 이동 모드: 선택 요소 핸들/바디면 변환, 그 외엔 패닝 ────────
                     if vm.selectedTool == .move {
                         if let el = vm.selectedElement {
@@ -496,7 +547,7 @@ extension DesignCanvasView {
 
                 // ── Continue marquee phase ───────────────────────────────────
                 if marqueeRect != nil {
-                    let origin = canvasCoord(from: value.startLocation)
+                    let origin = canvasCoord(from: value.startLocation, viewSize: viewSize)
                     marqueeRect = CGRect(
                         x: min(origin.x, pt.x),
                         y: min(origin.y, pt.y),
@@ -561,7 +612,7 @@ extension DesignCanvasView {
                 vm.handleDragChanged(at: pt)
             }
             .onEnded { value in
-                let endPt = canvasCoord(from: value.location)
+                let endPt = canvasCoord(from: value.location, viewSize: viewSize)
 
                 if isPanning {
                     isPanning = false
@@ -587,8 +638,25 @@ extension DesignCanvasView {
 
                 let isTap = abs(value.translation.width) < 4
                     && abs(value.translation.height) < 4
-                if isTap { vm.handleTap(at: endPt) }
-                else { vm.handleDragEnded(at: endPt) }
+                if isTap {
+                    if vm.selectedTool == .text {
+                        // 기존 텍스트 요소 클릭 → 편집 모드, 그 외 → 새 텍스트 생성
+                        let hit = vm.project.elements.reversed().first { $0.isVisible && $0.containsPoint(endPt) }
+                        if let hit, case .text(let t) = hit {
+                            vm.selectedElementIds = [t.id]
+                            vm.beginTextEdit(id: t.id)
+                        } else {
+                            vm.endTextEdit()
+                            vm.createTextElement(at: endPt)
+                        }
+                    } else {
+                        // 다른 도구 탭: 텍스트 편집 중이면 종료
+                        if vm.editingTextElementId != nil { vm.endTextEdit() }
+                        vm.handleTap(at: endPt)
+                    }
+                } else {
+                    vm.handleDragEnded(at: endPt)
+                }
                 cursorFor(endPt).set()
             }
     }
@@ -597,12 +665,22 @@ extension DesignCanvasView {
 // MARK: - Coordinate helpers
 
 extension DesignCanvasView {
-    private func canvasCoord(from v: CGPoint) -> CGPoint {
-        // v는 ZStack(뷰포트) 좌표계 기준 — .position() 뒤에 gesture/hover가 있으므로
-        // 캔버스 좌상단의 뷰포트 좌표 = 캔버스 중심 - 캔버스 크기의 절반
-        let originX = viewportSize.width  / 2 + vm.canvasOffset.width  - vm.project.canvasSize.width  * vm.zoom / 2
-        let originY = viewportSize.height / 2 + vm.canvasOffset.height - vm.project.canvasSize.height * vm.zoom / 2
+    private func canvasCoord(from v: CGPoint, viewSize: CGSize) -> CGPoint {
+        // v는 named "viewport" 좌표계(GeometryReader 기준) — canvasOffset 변화에도 원점 불변
+        let originX = viewSize.width  / 2 + vm.canvasOffset.width  - vm.project.canvasSize.width  * vm.zoom / 2
+        let originY = viewSize.height / 2 + vm.canvasOffset.height - vm.project.canvasSize.height * vm.zoom / 2
         return CGPoint(x: (v.x - originX) / vm.zoom, y: (v.y - originY) / vm.zoom)
+    }
+
+    /// 캔버스 좌표계의 rect를 뷰포트(GeometryReader) 좌표계로 변환한다.
+    private func canvasRectToScreen(_ rect: CGRect, viewSize: CGSize) -> CGRect {
+        let originX = viewSize.width  / 2 + vm.canvasOffset.width  - vm.project.canvasSize.width  * vm.zoom / 2
+        let originY = viewSize.height / 2 + vm.canvasOffset.height - vm.project.canvasSize.height * vm.zoom / 2
+        return CGRect(
+            x:      originX + rect.minX * vm.zoom,
+            y:      originY + rect.minY * vm.zoom,
+            width:  rect.width  * vm.zoom,
+            height: rect.height * vm.zoom)
     }
 
     private func scaled(_ rect: CGRect, by factor: CGFloat) -> CGRect {
