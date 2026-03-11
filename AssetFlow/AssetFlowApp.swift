@@ -14,13 +14,13 @@ struct AssetFlowApp: App {
         .windowStyle(.titleBar)
         .windowToolbarStyle(.unified(showsTitle: true))
         .commands {
-            CommandMenu("View") {
-                Button("Zoom In") {
+            CommandGroup(before: .toolbar) {
+                Button("Zoom In", systemImage: "plus.magnifyingglass") {
                     appState.iconDesignZoomIn()
                 }
                 .keyboardShortcut("+", modifiers: [.command])
                 
-                Button("Zoom Out") {
+                Button("Zoom Out", systemImage: "minus.magnifyingglass") {
                     appState.iconDesignZoomOut()
                 }
                 .keyboardShortcut("-", modifiers: [.command])

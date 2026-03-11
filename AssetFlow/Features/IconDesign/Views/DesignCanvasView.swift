@@ -22,6 +22,7 @@ struct DesignCanvasView: View {
             ZStack {
                 Color(nsColor: .underPageBackgroundColor)
                     .gesture(backgroundPanGesture)
+                
                 canvasLayer
                     .shadow(color: .black.opacity(0.2), radius: 8, x: 0, y: 4)
                     .position(
@@ -36,6 +37,13 @@ struct DesignCanvasView: View {
                             NSCursor.arrow.set()
                         }
                     }
+                
+                TipBannerView(isPresented: $vm.isTipBannerPresented)
+                    .frame(
+                        maxWidth: .infinity,
+                        maxHeight: .infinity,
+                        alignment: .top
+                    )
             }
             .frame(maxWidth: .infinity, maxHeight: .infinity)
             .clipped()

@@ -19,9 +19,6 @@ struct IconDesignView: View {
             Divider()
             
             DesignCanvasView(vm: vm)
-                .overlay(alignment: .top) {
-                    TipBannerView()
-                }
 
             Divider()
 
@@ -119,6 +116,9 @@ struct IconDesignView: View {
                     .keyboardShortcut("z", modifiers: [.command, .shift])
             }
             .hidden()
+        }
+        .onAppear {
+            vm.initViewModel()  // 초기에 툴팁 띄우기
         }
     }
 }

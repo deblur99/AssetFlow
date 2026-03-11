@@ -63,6 +63,10 @@ final class IconDesignViewModel {
         8.0, 4.0, 2.0, 1.5, 1.0, 0.8, 0.7, 0.6, 0.5, 0.4, 0.3, 0.2, 0.1
     ]
     
+    // MARK: - Tip banner
+    
+    var isTipBannerPresented = false
+    
     // MARK: - Computed helpers
 
     var elements: [CanvasElement] { project.elements }
@@ -74,6 +78,14 @@ final class IconDesignViewModel {
 
     var canUndo: Bool { !undoStack.isEmpty }
     var canRedo: Bool { !redoStack.isEmpty }
+    
+    // MARK: - Initialization
+    
+    func initViewModel() {
+        // TODO: 임시 처리: 이후 툴팁 언제 띄울지 결정되면 코드 수정
+        isTipBannerPresented = true
+    }
+    
     
     // MARK: - Edit Metadata
     

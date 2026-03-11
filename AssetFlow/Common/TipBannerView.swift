@@ -9,7 +9,8 @@ import SwiftUI
 
 /// 아이콘 디자인 팁 배너 뷰
 struct TipBannerView: View {
-    @Environment(\.dismiss) private var dismiss
+    @Binding var isPresented: Bool
+    @State private var isOnHover: Bool = false
 
     let tipText: String = "Tip: Press Command key with 1~4 number to switch tools quickly!"
 
@@ -25,21 +26,29 @@ struct TipBannerView: View {
             Spacer()
 
             // dismiss button
-            Button(action: {
-                dismiss()
-            }) {
+            Button {
+                isPresented.toggle()
+            } label: {
                 Image(systemName: "xmark.circle.fill")
-                    .foregroundColor(.gray)
+                    .foregroundColor(isOnHover ? .white : .gray)
             }
             .buttonStyle(.plain)
+            .scaleEffect(isOnHover ? 1.4 : 1.0)
+            .onHover { hover in
+                withAnimation(.easeInOut(duration: 0.15)) {
+                    self.isOnHover = hover
+                }
+            }
         }
         .padding()
         .background(Color.yellow.opacity(0.8))
-        .frame(height: 40)
+        .frame(height: 44)
         .frame(maxWidth: .infinity)
+        .opacity(isPresented ? 1 : 0)
+        .animation(.easeInOut(duration: 0.15), value: isPresented)
     }
 }
 
 #Preview {
-    TipBannerView()
+    TipBannerView(isPresented: .constant(true))
 }
