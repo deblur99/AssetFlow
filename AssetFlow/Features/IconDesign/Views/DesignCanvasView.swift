@@ -12,6 +12,7 @@ struct DesignCanvasView: View {
     @State private var scrollMonitor: Any?
     @State private var isPanning = false
     @State private var panStartOffset: CGSize = .zero
+    @State private var viewportSize: CGSize = .zero
     /// 선택 모드에서 드래그로 그리는 마키 사각형 (캔버스 좌표)
     @State private var marqueeRect: CGRect?
     private class HoverState { var isHovering = false }
@@ -25,6 +26,7 @@ struct DesignCanvasView: View {
                 
                 canvasLayer
                     .shadow(color: .black.opacity(0.2), radius: 8, x: 0, y: 4)
+                    .contentShape(Rectangle())
                     .position(
                         x: geometry.size.width / 2 + vm.canvasOffset.width,
                         y: geometry.size.height / 2 + vm.canvasOffset.height)
@@ -53,13 +55,17 @@ struct DesignCanvasView: View {
             }
             .simultaneousGesture(magnifyGesture)
             .onAppear {
-                vm.zoomToFit(in: geometry.size)
-                setupScrollWheelZoom()
-            }
-            .onDisappear {
-                if let m = scrollMonitor { NSEvent.removeMonitor(m) }
-            }
-            .onChange(of: geometry.size) { _, s in vm.zoomToFit(in: s) }
+                    viewportSize = geometry.size
+                    vm.zoomToFit(in: geometry.size)
+                    setupScrollWheelZoom()
+                }
+                .onDisappear {
+                    if let m = scrollMonitor { NSEvent.removeMonitor(m) }
+                }
+                .onChange(of: geometry.size) { _, s in
+                    viewportSize = s
+                    vm.zoomToFit(in: s)
+                }
             .overlay(alignment: .bottomTrailing) {
                 MinimapView(
                     canvasSize: vm.project.canvasSize,
@@ -204,8 +210,13 @@ extension DesignCanvasView {
             }
         }
 
-        // 이동 모드: 항상 손바닥 커서
+        // 이동 모드: 선택된 요소의 핸들/바디 위면 변환 커서, 그 외엔 패닝 커서
         if vm.selectedTool == .move {
+            if let el = vm.selectedElement {
+                if dist(pt, rotationHandleCanvasPos(for: el)) < handleTolerance { return .dragLink }
+                if let handle = edgeResizeHandle(at: pt, for: el) { return resizeCursor(for: handle, rotation: el.rotation) }
+                if el.containsPoint(pt) { return .openHand }
+            }
             return isPanning ? .closedHand : .openHand
         }
 
@@ -343,12 +354,51 @@ extension DesignCanvasView {
 
                 // ── Begin phase ─────────────────────────────────────────────
                 if vm.activeTransform == nil
+                    && !isPanning
                     && vm.activePathPoints.isEmpty
                     && vm.activeDragStart == nil
                     && marqueeRect == nil
                 {
-                    // ── 이동 모드: 무조건 패닝 ──────────────────────────────────
+                    // ── 이동 모드: 선택 요소 핸들/바디면 변환, 그 외엔 패닝 ────────
                     if vm.selectedTool == .move {
+                        if let el = vm.selectedElement {
+                            // 회전 핸들
+                            let rotPos = rotationHandleCanvasPos(for: el)
+                            if dist(start, rotPos) < handleTolerance {
+                                let center = CGPoint(x: el.frame.midX, y: el.frame.midY)
+                                let angle = atan2(start.y - center.y,
+                                                  start.x - center.x) * 180 / .pi
+                                vm.beginTransform()
+                                vm.activeTransform = .rotating(
+                                    startMouseAngle: angle,
+                                    startElementRotation: el.rotation,
+                                    center: center)
+                                NSCursor.crosshair.set()
+                                return
+                            }
+                            // 리사이즈 핸들
+                            if let handle = edgeResizeHandle(at: start, for: el) {
+                                vm.beginTransform()
+                                let anchor = handle.opposite.canvasPosition(
+                                    frame: el.frame, rotation: el.rotation)
+                                vm.activeTransform = .resizing(
+                                    handle: handle,
+                                    startFrame: el.frame,
+                                    startPoint: start,
+                                    startRotation: el.rotation,
+                                    anchorCanvas: anchor)
+                                resizeCursor(for: handle, rotation: el.rotation).set()
+                                return
+                            }
+                            // 요소 바디 → 이동
+                            if el.containsPoint(start) {
+                                vm.beginTransform()
+                                vm.activeTransform = .moving(startFrame: el.frame, startPoint: start)
+                                NSCursor.closedHand.set()
+                                return
+                            }
+                        }
+                        // 빈 영역 → 패닝
                         isPanning = true
                         panStartOffset = vm.canvasOffset
                         NSCursor.closedHand.set()
@@ -396,7 +446,6 @@ extension DesignCanvasView {
                             vm.selectedElementIds.contains($0.id) && $0.containsPoint(start)
                         }
                         if hitSelected != nil {
-                            let isJustCreated = vm.selectedElementIds.contains(vm.justCreatedElementId ?? UUID())
                             vm.justCreatedElementId = nil
                             vm.beginTransform()
                             if vm.selectedElementIds.count == 1, let el = vm.selectedElement {
@@ -549,7 +598,11 @@ extension DesignCanvasView {
 
 extension DesignCanvasView {
     private func canvasCoord(from v: CGPoint) -> CGPoint {
-        CGPoint(x: v.x / vm.zoom, y: v.y / vm.zoom)
+        // v는 ZStack(뷰포트) 좌표계 기준 — .position() 뒤에 gesture/hover가 있으므로
+        // 캔버스 좌상단의 뷰포트 좌표 = 캔버스 중심 - 캔버스 크기의 절반
+        let originX = viewportSize.width  / 2 + vm.canvasOffset.width  - vm.project.canvasSize.width  * vm.zoom / 2
+        let originY = viewportSize.height / 2 + vm.canvasOffset.height - vm.project.canvasSize.height * vm.zoom / 2
+        return CGPoint(x: (v.x - originX) / vm.zoom, y: (v.y - originY) / vm.zoom)
     }
 
     private func scaled(_ rect: CGRect, by factor: CGFloat) -> CGRect {

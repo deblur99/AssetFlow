@@ -20,7 +20,26 @@ final class IconDesignViewModel {
     var project = IconProject()
 
     // MARK: - Tool state
-    var selectedTool: DrawingTool = .move
+    var selectedToolId: String? = nil
+    var selectedTool: DrawingTool {
+        get {
+            guard let selectedToolId else { return .move }
+            return DrawingTool(rawValue: selectedToolId) ?? .move
+        } set {
+            selectedToolId = newValue.id
+        }
+    }
+    
+    var hoveredToolId: String? = nil
+    var hoveredTool: DrawingTool? {
+        get {
+            guard let hoveredToolId else { return nil }
+            return DrawingTool(rawValue: hoveredToolId)
+        } set {
+            hoveredToolId = newValue?.id
+        }
+    }
+    
     /// 다중 선택된 요소 ID 집합. 단일 선택 시에도 여기에 1개 들어간다.
     var selectedElementIds: Set<UUID> = []
 
@@ -136,6 +155,7 @@ final class IconDesignViewModel {
             project.addElement(.path(pathEl))
             activePathPoints = []
             if let id = project.elements.last?.id { selectedElementIds = [id] }
+            selectedTool = .select
 
         case .rectangle, .ellipse:
             guard let start = activeDragStart, let end = activeDragCurrent else {
@@ -164,6 +184,7 @@ final class IconDesignViewModel {
                 selectedElementIds = [id]
                 justCreatedElementId = id
             }
+            selectedTool = .select
 
         case .move, .select:
             break
