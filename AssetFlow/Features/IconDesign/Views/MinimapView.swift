@@ -215,7 +215,7 @@ struct MinimapView: View {
             let ts = NSTextStorage(attributedString: attrStr)
             let lm = NSLayoutManager()
             let tc = NSTextContainer(containerSize: CGSize(
-                width: CGFloat.greatestFiniteMagnitude,
+                width: max(rect.width, 1),
                 height: CGFloat.greatestFiniteMagnitude))
             ts.addLayoutManager(lm)
             lm.addTextContainer(tc)

@@ -372,13 +372,20 @@ struct PropertiesPanelView: View {
                         colorRow(label: "Fill",
                                  value: s.fillColor,
                                  onChange: { vm.updateSelectedStyle(fillColor: $0) })
-                        colorRow(label: "Stroke",
-                                 value: s.strokeColor,
-                                 onChange: { vm.updateSelectedStyle(strokeColor: $0) })
-                        sliderRow(label: "Width",
-                                  value: Binding(get: { s.strokeWidth },
-                                                 set: { vm.updateSelectedStyle(strokeWidth: $0) }),
-                                  range: 0...40, format: "%.1f")
+                        strokeRows(
+                            isEnabled: s.strokeWidth > 0,
+                            currentColor: s.strokeColor,
+                            currentWidth: s.strokeWidth,
+                            onColorChange: { vm.updateSelectedStyle(strokeColor: $0) },
+                            onWidthChange: { vm.updateSelectedStyle(strokeWidth: $0) },
+                            onEnable: {
+                                let color = IconDesignViewModel.colorIsTransparent(vm.strokeColor)
+                                    ? Color.black : vm.strokeColor
+                                vm.updateSelectedStyle(strokeColor: color,
+                                                       strokeWidth: max(vm.lineWidth, 1))
+                            },
+                            onDisable: { vm.updateSelectedStyle(strokeWidth: 0) }
+                        )
                         sliderRow(label: "Opacity",
                                   value: Binding(get: { CGFloat(s.opacity * 100) },
                                                  set: { vm.updateSelectedStyle(opacity: Double($0 / 100)) }),
@@ -412,10 +419,16 @@ struct PropertiesPanelView: View {
                 } else {
                     // ── 기본값 편집 모드 (새 도형에 적용) ────────────────
                     colorRow(label: "Fill", value: vm.fillColor, onChange: { vm.fillColor = $0 })
-                    colorRow(label: "Stroke", value: vm.strokeColor, onChange: { vm.strokeColor = $0 })
-                    sliderRow(label: "Width",
-                              value: $vm.lineWidth, range: 0.5...40,
-                              format: "%.1f")
+                    let strokeEnabled = !IconDesignViewModel.colorIsTransparent(vm.strokeColor)
+                    strokeRows(
+                        isEnabled: strokeEnabled,
+                        currentColor: vm.strokeColor,
+                        currentWidth: vm.lineWidth,
+                        onColorChange: { vm.strokeColor = $0 },
+                        onWidthChange: { vm.lineWidth = $0 },
+                        onEnable: { vm.strokeColor = .black },
+                        onDisable: { vm.strokeColor = .clear }
+                    )
                     sliderRow(label: "Opacity",
                               value: Binding(
                                   get: { vm.currentOpacity * 100 },
@@ -427,6 +440,62 @@ struct PropertiesPanelView: View {
             .padding(2)
         }
         .padding(8)
+    }
+
+    /// Stroke 색상 + 너비 행: 비활성(None) / 활성(ColorPicker + Width 슬라이더) 두 상태 관리
+    @ViewBuilder
+    private func strokeRows(
+        isEnabled: Bool,
+        currentColor: Color,
+        currentWidth: CGFloat,
+        onColorChange: @escaping (Color) -> Void,
+        onWidthChange: @escaping (CGFloat) -> Void,
+        onEnable: @escaping () -> Void,
+        onDisable: @escaping () -> Void
+    ) -> some View {
+        HStack(spacing: 6) {
+            Text("Stroke")
+                .font(.caption)
+                .foregroundStyle(.secondary)
+                .frame(width: 46, alignment: .leading)
+
+            if isEnabled {
+                ColorPicker("", selection: Binding(get: { currentColor }, set: { onColorChange($0) }),
+                            supportsOpacity: true)
+                    .labelsHidden()
+                Spacer()
+                Button { onDisable() } label: {
+                    Image(systemName: "xmark.circle.fill")
+                        .font(.caption)
+                        .foregroundStyle(.tertiary)
+                }
+                .buttonStyle(.plain)
+                .help("Remove stroke")
+            } else {
+                Button { onEnable() } label: {
+                    HStack(spacing: 5) {
+                        RoundedRectangle(cornerRadius: 3)
+                            .fill(Color(nsColor: .windowBackgroundColor))
+                            .frame(width: 16, height: 16)
+                            .overlay(
+                                RoundedRectangle(cornerRadius: 3)
+                                    .strokeBorder(Color(nsColor: .separatorColor), lineWidth: 1)
+                            )
+                        Text("None")
+                            .font(.caption)
+                            .foregroundStyle(.secondary)
+                    }
+                }
+                .buttonStyle(.plain)
+                Spacer()
+            }
+        }
+
+        if isEnabled {
+            sliderRow(label: "Width",
+                      value: Binding(get: { currentWidth }, set: { onWidthChange($0) }),
+                      range: 0.5...40, format: "%.1f")
+        }
     }
 
     @ViewBuilder
@@ -456,7 +525,7 @@ struct PropertiesPanelView: View {
                 value: Binding(get: { swData.0 },
                                set: { vm.updateSelectedStyle(strokeWidth: $0) }),
                 isMixed: swData.1,
-                range: 0...40, format: "%.1f"
+                range: 0.5...40, format: "%.1f"
             )
         }
     }

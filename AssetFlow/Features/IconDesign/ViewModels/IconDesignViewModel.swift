@@ -214,6 +214,12 @@ final class IconDesignViewModel {
 
     // MARK: - Element style editing
 
+    /// strokeColor의 "투명(비활성)" 여부 판단 — alpha ≈ 0 이면 "no stroke"
+    static func colorIsTransparent(_ color: Color) -> Bool {
+        guard let nc = NSColor(color).usingColorSpace(.sRGB) else { return false }
+        return nc.alphaComponent < 0.01
+    }
+
     func updateSelectedStyle(
         fillColor: Color? = nil,
         strokeColor: Color? = nil,
@@ -229,7 +235,16 @@ final class IconDesignViewModel {
             switch project.elements[idx] {
             case .shape(var e):
                 if let v = fillColor    { e.fillColor = v }
-                if let v = strokeColor  { e.strokeColor = v }
+                if let v = strokeColor  {
+                    e.strokeColor = v
+                    // 투명(비활성) 색상 → 너비 0으로 스트로크 비활성화
+                    // 불투명 색상이고 현재 너비가 0 → 기본 너비로 스트로크 활성화
+                    if Self.colorIsTransparent(v) {
+                        e.strokeWidth = 0
+                    } else if e.strokeWidth == 0 {
+                        e.strokeWidth = max(lineWidth, 1)
+                    }
+                }
                 if let v = strokeWidth  { e.strokeWidth = v }
                 if let v = cornerRadius { e.cornerRadii = CornerRadii(v) }
                 if let v = cornerRadii  { e.cornerRadii = v }
@@ -394,12 +409,14 @@ extension IconDesignViewModel {
                     e.fontSize = max(6, e.fontSize * scale)
                 }
             }
-            // fontSize 변경 후 실제 렌더 크기를 측정해 frame 보정
+            // 새 너비를 기준으로 줄 바꿈 후 실제 높이를 재측정해 frame 보정
             let measured = Self.measuredTextSize(
                 text: e.text, fontName: e.fontName, fontSize: e.fontSize,
-                isBold: e.isBold, isItalic: e.isItalic
+                isBold: e.isBold, isItalic: e.isItalic,
+                maxWidth: newFrame.width
             )
-            e.frame = CGRect(origin: newFrame.origin, size: measured)
+            e.frame = CGRect(origin: newFrame.origin,
+                             size: CGSize(width: newFrame.width, height: measured.height))
             project.elements[idx] = .text(e)
         }
         project.updatedAt = Date()
@@ -438,13 +455,12 @@ extension IconDesignViewModel {
 extension IconDesignViewModel {
     func createTextElement(at point: CGPoint) {
         checkpoint()
-        // 초기 높이: 정확한 폰트 메트릭으로 한 줄 높이
         let nsFont = NSFont(name: textFontName, size: textFontSize)
             ?? NSFont.systemFont(ofSize: textFontSize)
         let lineH = ceil(nsFont.ascender - nsFont.descender + nsFont.leading)
-        // origin = 클릭 지점(좌측 상단). 세로 중앙은 ascender/descender로 자동 결정됨.
-        // 초기 너비는 0 — reportSize가 즉시 실제 크기로 갱신함
-        let frame = CGRect(x: point.x, y: point.y, width: 0, height: lineH)
+        // 고정 너비 텍스트 박스 (200pt): 텍스트가 박스보다 짧아야 정렬이 의미를 가짐
+        let defaultWidth: CGFloat = 200
+        let frame = CGRect(x: point.x, y: point.y, width: defaultWidth, height: lineH)
         let el = TextElement(
             id: UUID(),
             name: "Text \(project.elements.count + 1)",
@@ -465,12 +481,13 @@ extension IconDesignViewModel {
         project.updatedAt = Date()
     }
 
-    /// 인라인 편집기에서 측정된 크기(캔버스 좌표계)로 텍스트 요소 frame을 갱신한다.
-    /// checkpoint 없이 직접 갱신 — 타이핑마다 undo 스택을 쌓지 않음.
+    /// 인라인 편집기에서 측정된 높이(캔버스 좌표계)로 텍스트 요소 frame을 갱신한다.
+    /// 너비는 고정(사용자가 조절), 높이만 텍스트 내용에 맞춰 자동 조절된다.
     func updateTextFrame(id: UUID, canvasSize: CGSize) {
         guard let idx = project.elements.firstIndex(where: { $0.id == id }),
               case .text(var e) = project.elements[idx] else { return }
-        e.frame = CGRect(origin: e.frame.origin, size: canvasSize)
+        e.frame = CGRect(origin: e.frame.origin,
+                         size: CGSize(width: e.frame.width, height: max(1, canvasSize.height)))
         project.elements[idx] = .text(e)
     }
 
@@ -522,13 +539,15 @@ extension IconDesignViewModel {
             if let v = textColor { e.textColor = v }
             if let v = alignment { e.alignment = v }
             e.show()
-            // 폰트 속성 변경 시 실제 렌더 크기로 frame 갱신 (선택 사각형 동기화)
+            // 폰트 속성 변경 시 현재 너비 기준으로 높이만 재측정 (너비는 고정)
             if affectsLayout {
                 let newSize = Self.measuredTextSize(
                     text: e.text, fontName: e.fontName, fontSize: e.fontSize,
-                    isBold: e.isBold, isItalic: e.isItalic
+                    isBold: e.isBold, isItalic: e.isItalic,
+                    maxWidth: e.frame.width
                 )
-                e.frame = CGRect(origin: e.frame.origin, size: newSize)
+                e.frame = CGRect(origin: e.frame.origin,
+                                 size: CGSize(width: e.frame.width, height: newSize.height))
             }
             project.elements[idx] = .text(e)
         }
@@ -543,9 +562,10 @@ extension IconDesignViewModel {
     }
 
     /// NSLayoutManager를 사용해 텍스트의 실제 렌더링 크기를 측정한다.
-    /// InlineTextEditorView의 reportSize() 및 캔버스 렌더링과 동일한 파이프라인 사용.
+    /// - Parameter maxWidth: 텍스트 컨테이너 너비 (기본값: 무한대 = 단일 행 측정)
     static func measuredTextSize(text: String, fontName: String, fontSize: CGFloat,
-                                 isBold: Bool, isItalic: Bool) -> CGSize
+                                 isBold: Bool, isItalic: Bool,
+                                 maxWidth: CGFloat = .greatestFiniteMagnitude) -> CGSize
     {
         var font = NSFont(name: fontName, size: fontSize) ?? NSFont.systemFont(ofSize: fontSize)
         if isBold { font = NSFontManager.shared.convert(font, toHaveTrait: .boldFontMask) }
@@ -558,7 +578,7 @@ extension IconDesignViewModel {
         let ts = NSTextStorage(string: text, attributes: [.font: font])
         let lm = NSLayoutManager()
         let tc = NSTextContainer(containerSize: CGSize(
-            width: CGFloat.greatestFiniteMagnitude,
+            width: maxWidth,
             height: CGFloat.greatestFiniteMagnitude
         ))
         ts.addLayoutManager(lm)

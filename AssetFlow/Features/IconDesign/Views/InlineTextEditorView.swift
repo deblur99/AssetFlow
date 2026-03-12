@@ -4,8 +4,8 @@ import SwiftUI
 /// NSTextView 기반의 캔버스 인라인 텍스트 편집기.
 /// 텍스트 도구로 요소를 클릭했을 때 캔버스 위에 오버레이로 표시된다.
 ///
-/// - 텍스트 컨테이너는 무한 크기(줄바꿈 없음) → 텍스트에 맞게 가로·세로 모두 확장
-/// - `onSizeChange`: 콘텐츠 크기가 바뀔 때 화면 좌표계(pt) 기준 크기를 보고
+/// - `frameWidth`: 텍스트 박스 너비(화면 pt). 이 너비로 텍스트를 줄 바꿈하고 정렬을 적용한다.
+/// - `onSizeChange`: 컨텐츠 높이가 바뀔 때 화면 좌표계(pt) 기준 높이를 보고
 struct InlineTextEditor: NSViewRepresentable {
     @Binding var text: String
     var fontName: String
@@ -14,12 +14,12 @@ struct InlineTextEditor: NSViewRepresentable {
     var isItalic: Bool
     var textColor: Color
     var alignment: TextAlignmentOption
+    var frameWidth: CGFloat // 텍스트 박스 너비 (화면 pt)
     var onEndEditing: () -> Void
     var onSizeChange: ((CGSize) -> Void)?
 
     func makeCoordinator() -> Coordinator { Coordinator(self) }
 
-    // NSScrollView 없이 NSTextView를 직접 사용
     func makeNSView(context: Context) -> NSTextView {
         let tv = NSTextView()
         tv.delegate = context.coordinator
@@ -28,16 +28,15 @@ struct InlineTextEditor: NSViewRepresentable {
         tv.isRichText = false
         tv.backgroundColor = .clear
         tv.drawsBackground = false
-        // 뷰포트 크기에 관계없이 콘텐츠 크기로 레이아웃
+        // 너비는 frameWidth로 고정; 텍스트가 그 안에서 줄 바꿈되며 높이만 확장됨
         tv.textContainer?.widthTracksTextView  = false
         tv.textContainer?.heightTracksTextView = false
         tv.textContainer?.containerSize = CGSize(
-            width:  CGFloat.greatestFiniteMagnitude,
+            width:  frameWidth,
             height: CGFloat.greatestFiniteMagnitude)
         tv.isVerticallyResizable   = true
-        tv.isHorizontallyResizable = true
+        tv.isHorizontallyResizable = false
         tv.autoresizingMask        = []
-        // inset 제거: NSTextView와 GraphicsContext 렌더링 원점이 동일하게 (0,0)
         tv.textContainerInset = .zero
 
         context.coordinator.textView = tv
@@ -52,6 +51,11 @@ struct InlineTextEditor: NSViewRepresentable {
     }
 
     func updateNSView(_ tv: NSTextView, context: Context) {
+        // frameWidth 변경 시 컨테이너 너비 동기화
+        tv.textContainer?.containerSize = CGSize(
+            width:  frameWidth,
+            height: CGFloat.greatestFiniteMagnitude)
+
         if !context.coordinator.isEditing, tv.string != text {
             tv.string = text
             applyStyle(to: tv)
@@ -80,6 +84,15 @@ struct InlineTextEditor: NSViewRepresentable {
             .foregroundColor: NSColor(textColor),
             .paragraphStyle: ps,
         ]
+
+        // typingAttributes는 새로 입력할 텍스트에만 적용됨.
+        // 편집 중 정렬 변경 시 기존 텍스트에도 즉시 반영되도록 textStorage 전체에 적용.
+        if let storage = tv.textStorage, storage.length > 0 {
+            storage.beginEditing()
+            storage.addAttribute(.paragraphStyle, value: ps,
+                                 range: NSRange(location: 0, length: storage.length))
+            storage.endEditing()
+        }
     }
 
     // MARK: - Coordinator

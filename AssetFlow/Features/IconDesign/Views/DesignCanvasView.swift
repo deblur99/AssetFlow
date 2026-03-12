@@ -109,6 +109,7 @@ struct DesignCanvasView: View {
                 isItalic: textEl.isItalic,
                 textColor: textEl.textColor.opacity(textEl.opacity),
                 alignment: textEl.alignment,
+                frameWidth: textEl.frame.width * vm.zoom,
                 onEndEditing: { vm.endTextEdit() },
                 onSizeChange: { screenSize in
                     // 화면 크기 → 캔버스 좌표계 크기로 변환
@@ -297,8 +298,9 @@ extension DesignCanvasView {
             // → attrStr.draw(at:)와 달리 line-fragment 기준점이 정확히 (0,0)에서 시작됨.
             let ts = NSTextStorage(attributedString: attrStr)
             let lm = NSLayoutManager()
+            // 프레임 너비를 컨테이너 너비로 사용 → 정렬이 올바르게 렌더링됨
             let tc = NSTextContainer(containerSize: CGSize(
-                width:  CGFloat.greatestFiniteMagnitude,
+                width:  max(rect.width, 1),
                 height: CGFloat.greatestFiniteMagnitude))
             ts.addLayoutManager(lm)
             lm.addTextContainer(tc)
