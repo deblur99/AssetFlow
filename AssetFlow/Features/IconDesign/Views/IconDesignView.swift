@@ -124,6 +124,8 @@ struct IconDesignView: View {
                     .keyboardShortcut("[", modifiers: [.command, .shift])
                 Button("") { vm.selectedElementIds = []; vm.editingTextElementId = nil }
                     .keyboardShortcut(.escape, modifiers: [])
+                Button("") { vm.isGridEnabled.toggle() }
+                    .keyboardShortcut("g", modifiers: .command)
             }
             .hidden()
         }

@@ -189,6 +189,31 @@ struct DesignCanvasView: View {
                         style: StrokeStyle(lineWidth: 1, dash: [5, 3]))
                 .allowsHitTesting(false)
             }
+
+            // 격자 오버레이 (레이어 + 선택 핸들 위 계층)
+            if vm.isGridEnabled {
+                let cw = vm.project.canvasSize.width  * vm.zoom
+                let ch = vm.project.canvasSize.height * vm.zoom
+                let step = IconDesignViewModel.gridSize * vm.zoom
+                Canvas { ctx, size in
+                    var path = Path()
+                    var x: CGFloat = step
+                    while x < cw {
+                        path.move(to: CGPoint(x: x, y: 0))
+                        path.addLine(to: CGPoint(x: x, y: ch))
+                        x += step
+                    }
+                    var y: CGFloat = step
+                    while y < ch {
+                        path.move(to: CGPoint(x: 0, y: y))
+                        path.addLine(to: CGPoint(x: cw, y: y))
+                        y += step
+                    }
+                    ctx.stroke(path, with: .color(Color(white: 0.25, opacity: 0.18)),
+                               lineWidth: 0.5)
+                }
+                .allowsHitTesting(false)
+            }
         }
         .frame(width: vm.project.canvasSize.width * vm.zoom,
                height: vm.project.canvasSize.height * vm.zoom)
@@ -622,6 +647,10 @@ extension DesignCanvasView {
                         var newX = startFrame.minX + (pt.x - startPoint.x)
                         var newY = startFrame.minY + (pt.y - startPoint.y)
 
+                        // 격자 스냅 (중앙 스냅보다 먼저 적용)
+                        newX = snapGrid(newX)
+                        newY = snapGrid(newY)
+
                         // X축 중앙 스냅 (레이어 midX ≈ 캔버스 수직 중심선)
                         let proposedMidX = newX + startFrame.width  / 2
                         let newSnapX = abs(proposedMidX - canvasCenter.x) < threshold
@@ -642,8 +671,17 @@ extension DesignCanvasView {
                             height: startFrame.height))
 
                     case .movingGroup(let startFrames, let startPoint):
-                        let dx = pt.x - startPoint.x
-                        let dy = pt.y - startPoint.y
+                        let rawDx = pt.x - startPoint.x
+                        let rawDy = pt.y - startPoint.y
+                        // 격자 스냅: 그룹 대표(첫 프레임) 기준으로 델타를 정렬
+                        let dx: CGFloat
+                        let dy: CGFloat
+                        if vm.isGridEnabled, let first = startFrames.values.first {
+                            dx = snapGrid(first.minX + rawDx) - first.minX
+                            dy = snapGrid(first.minY + rawDy) - first.minY
+                        } else {
+                            dx = rawDx; dy = rawDy
+                        }
                         let updated = startFrames.mapValues { f in
                             CGRect(x: f.minX + dx, y: f.minY + dy,
                                    width: f.width, height: f.height)
@@ -654,7 +692,14 @@ extension DesignCanvasView {
                         guard let el = vm.selectedElement else { return }
                         let rawDelta = CGPoint(x: pt.x - startPoint.x, y: pt.y - startPoint.y)
                         let localDelta = rotateVec(rawDelta, by: -startRotation)
-                        let proposed = handle.apply(delta: localDelta, to: startFrame)
+                        var proposed = handle.apply(delta: localDelta, to: startFrame)
+                        // 격자 스냅: 크기를 격자 단위로 정렬
+                        if vm.isGridEnabled {
+                            proposed = CGRect(
+                                x: proposed.minX, y: proposed.minY,
+                                width:  snapGrid(proposed.width),
+                                height: snapGrid(proposed.height))
+                        }
                         let oppLocal = CGPoint(
                             x: handle.opposite.unitOffset.x * proposed.width,
                             y: handle.opposite.unitOffset.y * proposed.height)
@@ -881,6 +926,13 @@ extension DesignCanvasView {
                 .rotated(by: rad)
                 .translatedBy(x: -center.x, y: -center.y)
         )
+    }
+
+    /// 격자 활성 시 캔버스 좌표를 격자 단위로 스냅한다.
+    private func snapGrid(_ v: CGFloat) -> CGFloat {
+        guard vm.isGridEnabled else { return v }
+        let g = IconDesignViewModel.gridSize
+        return round(v / g) * g
     }
 
     /// 트랙패드 정렬 햅틱 — 레이어가 캔버스 중앙에 스냅될 때 호출

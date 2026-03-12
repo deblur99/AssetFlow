@@ -97,6 +97,11 @@ final class IconDesignViewModel {
     // MARK: - Tip banner
     
     var isTipBannerPresented = false
+
+    // MARK: - Grid
+
+    static let gridSize: CGFloat = 41.0
+    var isGridEnabled = true // 초기 상태는 격자 표시 ON
     
     // MARK: - Computed helpers
 
