@@ -348,7 +348,7 @@ extension DesignCanvasView {
     private func renderActivePreview(in ctx: inout GraphicsContext, zoom z: CGFloat) {
         if vm.activePathPoints.count > 1 {
             let p = polyline(from: vm.activePathPoints, zoom: z)
-            let color = vm.strokeColor == .clear ? vm.fillColor : vm.strokeColor
+            let color = IconDesignViewModel.colorIsTransparent(vm.strokeColor) ? Color.black : vm.strokeColor
             ctx.stroke(p, with: .color(color),
                        style: StrokeStyle(lineWidth: vm.lineWidth * z,
                                           lineCap: .round, lineJoin: .round))

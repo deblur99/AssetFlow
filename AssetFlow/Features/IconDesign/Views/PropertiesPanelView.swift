@@ -391,9 +391,9 @@ struct PropertiesPanelView: View {
                                                  set: { vm.updateSelectedStyle(opacity: Double($0 / 100)) }),
                                   range: 0...100, format: "%.0f%%")
                     case .path(let p):
-                        colorRow(label: "Color",
+                        colorRow(label: "Stroke",
                                  value: p.color,
-                                 onChange: { vm.updateSelectedStyle(fillColor: $0) })
+                                 onChange: { vm.updateSelectedStyle(strokeColor: $0) })
                         sliderRow(label: "Width",
                                   value: Binding(get: { p.lineWidth },
                                                  set: { vm.updateSelectedStyle(strokeWidth: $0) }),
@@ -402,6 +402,7 @@ struct PropertiesPanelView: View {
                                   value: Binding(get: { CGFloat(p.opacity * 100) },
                                                  set: { vm.updateSelectedStyle(opacity: Double($0 / 100)) }),
                                   range: 0...100, format: "%.0f%%")
+                        penSmoothRow
                     case .image(let i):
                         sliderRow(label: "Opacity",
                                   value: Binding(get: { CGFloat(i.opacity * 100) },
@@ -418,23 +419,33 @@ struct PropertiesPanelView: View {
                     multiSelectionStyleContent
                 } else {
                     // ── 기본값 편집 모드 (새 도형에 적용) ────────────────
-                    colorRow(label: "Fill", value: vm.fillColor, onChange: { vm.fillColor = $0 })
-                    let strokeEnabled = !IconDesignViewModel.colorIsTransparent(vm.strokeColor)
-                    strokeRows(
-                        isEnabled: strokeEnabled,
-                        currentColor: vm.strokeColor,
-                        currentWidth: vm.lineWidth,
-                        onColorChange: { vm.strokeColor = $0 },
-                        onWidthChange: { vm.lineWidth = $0 },
-                        onEnable: { vm.strokeColor = .black },
-                        onDisable: { vm.strokeColor = .clear }
-                    )
-                    sliderRow(label: "Opacity",
-                              value: Binding(
-                                  get: { vm.currentOpacity * 100 },
-                                  set: { vm.currentOpacity = $0 / 100 }
-                              ),
-                              range: 0...100, format: "%.0f%%")
+                    if vm.selectedTool == .pen {
+                        // 펜 도구: Stroke 항상 표시, Fill 없음
+                        colorRow(label: "Stroke", value: vm.strokeColor == .clear ? Color.black : vm.strokeColor,
+                                 onChange: { vm.strokeColor = $0 })
+                        sliderRow(label: "Width",
+                                  value: Binding(get: { vm.lineWidth }, set: { vm.lineWidth = $0 }),
+                                  range: 0.5...40, format: "%.1f")
+                        penSmoothRow
+                    } else {
+                        colorRow(label: "Fill", value: vm.fillColor, onChange: { vm.fillColor = $0 })
+                        let strokeEnabled = !IconDesignViewModel.colorIsTransparent(vm.strokeColor)
+                        strokeRows(
+                            isEnabled: strokeEnabled,
+                            currentColor: vm.strokeColor,
+                            currentWidth: vm.lineWidth,
+                            onColorChange: { vm.strokeColor = $0 },
+                            onWidthChange: { vm.lineWidth = $0 },
+                            onEnable: { vm.strokeColor = .black },
+                            onDisable: { vm.strokeColor = .clear }
+                        )
+                        sliderRow(label: "Opacity",
+                                  value: Binding(
+                                      get: { vm.currentOpacity * 100 },
+                                      set: { vm.currentOpacity = $0 / 100 }
+                                  ),
+                                  range: 0...100, format: "%.0f%%")
+                    }
                 }
             }
             .padding(2)
@@ -495,6 +506,20 @@ struct PropertiesPanelView: View {
             sliderRow(label: "Width",
                       value: Binding(get: { currentWidth }, set: { onWidthChange($0) }),
                       range: 0.5...40, format: "%.1f")
+        }
+    }
+
+    private var penSmoothRow: some View {
+        HStack {
+            Text("Smooth")
+                .font(.caption)
+                .foregroundStyle(.secondary)
+                .frame(width: 46, alignment: .leading)
+            Spacer()
+            Toggle("", isOn: $vm.smoothPath)
+                .labelsHidden()
+                .toggleStyle(.checkbox)
+                .help("픽셀을 정리하여 울퉁불퉁한 획을 부드럽게 정돈합니다")
         }
     }
 

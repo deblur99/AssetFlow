@@ -94,6 +94,7 @@ final class IconDesignViewModel {
     var lineWidth: CGFloat = 2
     var cornerRadii: CornerRadii = CornerRadii()
     var currentOpacity: Double = 1.0
+    var smoothPath: Bool = true
 
     // MARK: - Text style defaults
 
@@ -220,6 +221,35 @@ final class IconDesignViewModel {
         return nc.alphaComponent < 0.01
     }
 
+    // MARK: - Path Smoothing (Ramer–Douglas–Peucker)
+
+    private func perpendicularDistance(_ p: CGPoint, from a: CGPoint, to b: CGPoint) -> CGFloat {
+        let dx = b.x - a.x
+        let dy = b.y - a.y
+        let len = sqrt(dx*dx + dy*dy)
+        guard len > 0 else { return hypot(p.x - a.x, p.y - a.y) }
+        return abs(dy * p.x - dx * p.y + b.x * a.y - b.y * a.x) / len
+    }
+
+    private func simplifyPath(_ points: [CGPoint], epsilon: CGFloat = 1.5) -> [CGPoint] {
+        guard points.count > 2 else { return points }
+        var maxDist: CGFloat = 0
+        var maxIdx = 0
+        let first = points.first!, last = points.last!
+        for i in 1..<points.count - 1 {
+            let d = perpendicularDistance(points[i], from: first, to: last)
+            if d > maxDist { maxDist = d; maxIdx = i }
+        }
+        if maxDist > epsilon {
+            let left  = simplifyPath(Array(points[0...maxIdx]), epsilon: epsilon)
+            let right = simplifyPath(Array(points[maxIdx...]),  epsilon: epsilon)
+            return Array(left.dropLast()) + right
+        }
+        return [first, last]
+    }
+
+    // MARK: - Style Update
+
     func updateSelectedStyle(
         fillColor: Color? = nil,
         strokeColor: Color? = nil,
@@ -315,11 +345,14 @@ extension IconDesignViewModel {
                 handleTap(at: point) // 탭: 다른 도구와 동일하게 선택/해제 처리
                 return
             }
+            let rawPoints = activePathPoints
+            let finalPoints = smoothPath ? simplifyPath(rawPoints) : rawPoints
+            let penColor = IconDesignViewModel.colorIsTransparent(strokeColor) ? Color.black : strokeColor
             let pathEl = PathElement(
                 id: UUID(),
                 name: "Path \(project.elements.count + 1)",
-                points: activePathPoints,
-                color: strokeColor == .clear ? fillColor : strokeColor,
+                points: finalPoints,
+                color: penColor,
                 lineWidth: lineWidth
             )
             project.addElement(.path(pathEl))
