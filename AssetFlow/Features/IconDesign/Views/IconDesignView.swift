@@ -100,12 +100,10 @@ struct IconDesignView: View {
                 }
             }
         }
-        .onKeyPress(.delete) {
-            vm.deleteSelectedElement()
-            return .handled
-        }
         .background {
-            Group {
+            ZStack {
+                Button("") { vm.cutSelectedElement() }
+                    .keyboardShortcut("x", modifiers: .command)
                 Button("") { vm.copySelectedElement() }
                     .keyboardShortcut("c", modifiers: .command)
                 Button("") { vm.pasteElement() }
@@ -114,6 +112,18 @@ struct IconDesignView: View {
                     .keyboardShortcut("z", modifiers: .command)
                 Button("") { vm.redo() }
                     .keyboardShortcut("z", modifiers: [.command, .shift])
+                Button("") { vm.deleteSelectedElement() }
+                    .keyboardShortcut(.delete, modifiers: [])
+                Button("") { if let id = vm.selectedElement?.id { vm.bringForward(id: id) } }
+                    .keyboardShortcut("]", modifiers: .command)
+                Button("") { if let id = vm.selectedElement?.id { vm.sendBackward(id: id) } }
+                    .keyboardShortcut("[", modifiers: .command)
+                Button("") { if let id = vm.selectedElement?.id { vm.bringToFront(id: id) } }
+                    .keyboardShortcut("]", modifiers: [.command, .shift])
+                Button("") { if let id = vm.selectedElement?.id { vm.sendToBack(id: id) } }
+                    .keyboardShortcut("[", modifiers: [.command, .shift])
+                Button("") { vm.selectedElementIds = []; vm.editingTextElementId = nil }
+                    .keyboardShortcut(.escape, modifiers: [])
             }
             .hidden()
         }

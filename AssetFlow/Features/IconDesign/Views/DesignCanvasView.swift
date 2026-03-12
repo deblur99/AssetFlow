@@ -55,6 +55,9 @@ struct DesignCanvasView: View {
                     NSCursor.arrow.set()
                 }
             }
+            .contextMenu {
+                canvasContextMenu(viewSize: geometry.size)
+            }
             .onAppear {
                 vm.zoomToFit(in: geometry.size)
                 setupScrollWheelZoom()
@@ -713,6 +716,14 @@ extension DesignCanvasView {
                     return
                 }
 
+                // 펜 도구 활성 경로: translation 크기와 무관하게 항상 finalize
+                // (짧은 획도 isTap으로 오판되어 activePathPoints가 잔존하는 버그 방지)
+                if !vm.activePathPoints.isEmpty {
+                    vm.handleDragEnded(at: endPt)
+                    cursorFor(endPt).set()
+                    return
+                }
+
                 let isTap = abs(value.translation.width) < 4
                     && abs(value.translation.height) < 4
                 if isTap {
@@ -745,6 +756,72 @@ extension DesignCanvasView {
                 }
                 cursorFor(endPt).set()
             }
+    }
+}
+
+// MARK: - Context menu
+
+extension DesignCanvasView {
+    @ViewBuilder
+    private func canvasContextMenu(viewSize: CGSize) -> some View {
+        let hasSelection = !vm.selectedElementIds.isEmpty
+        let id = vm.selectedElement?.id
+        
+        Button {
+            vm.cutSelectedElement()
+        } label: {
+            Label("Cut", systemImage: "scissors")
+        }
+        .keyboardShortcut("x", modifiers: .command)
+        .disabled(!hasSelection)
+        
+        Button {
+            vm.copySelectedElement()
+        } label: {
+            Label("Copy", systemImage: "doc.on.doc")
+        }
+        .keyboardShortcut("c", modifiers: .command)
+        .disabled(!hasSelection)
+
+        Button {
+            vm.pasteElement()
+        } label: {
+            Label("Paste", systemImage: "doc.on.clipboard")
+        }
+        .keyboardShortcut("v", modifiers: .command)
+        .disabled(vm.clipboard == nil)
+
+        if let id {
+            Divider()
+
+            Button {
+                vm.bringForward(id: id)
+            } label: {
+                Label("Bring Forward", systemImage: "square.2.layers.3d.top.filled")
+            }
+            .keyboardShortcut("]", modifiers: .command)
+
+            Button {
+                vm.sendBackward(id: id)
+            } label: {
+                Label("Send Backward", systemImage: "square.2.layers.3d.bottom.filled")
+            }
+            .keyboardShortcut("[", modifiers: .command)
+
+            Button {
+                vm.bringToFront(id: id)
+            } label: {
+                Label("Bring to Front", systemImage: "square.3.layers.3d.top.filled")
+            }
+            .keyboardShortcut("]", modifiers: [.command, .shift])
+
+            Button {
+                vm.sendToBack(id: id)
+            } label: {
+                Label("Send to Back", systemImage: "square.3.layers.3d.bottom.filled")
+            }
+            .keyboardShortcut("[", modifiers: [.command, .shift])
+        }
     }
 }
 

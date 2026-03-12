@@ -155,6 +155,7 @@ final class IconDesignViewModel {
         case .pen:
             guard activePathPoints.count > 1 else {
                 activePathPoints = []
+                handleTap(at: point)  // 탭: 다른 도구와 동일하게 선택/해제 처리
                 return
             }
             let pathEl = PathElement(
@@ -267,13 +268,31 @@ final class IconDesignViewModel {
             e.frame = newFrame
             project.elements[idx] = .image(e)
         case .path(var e):
-            // For paths, translate all points to follow the new origin
-            let dx = newFrame.minX - e.frame.minX
-            let dy = newFrame.minY - e.frame.minY
-            e.points = e.points.map { CGPoint(x: $0.x + dx, y: $0.y + dy) }
+            let oldFrame = e.frame
+            let dx = newFrame.minX - oldFrame.minX
+            let dy = newFrame.minY - oldFrame.minY
+            let scaleX = oldFrame.width  > 0 ? newFrame.width  / oldFrame.width  : 1
+            let scaleY = oldFrame.height > 0 ? newFrame.height / oldFrame.height : 1
+            e.points = e.points.map { pt in
+                // bounding box 원점 기준으로 스케일 후 새 원점으로 이동
+                CGPoint(
+                    x: newFrame.minX + (pt.x - oldFrame.minX) * scaleX,
+                    y: newFrame.minY + (pt.y - oldFrame.minY) * scaleY)
+            }
             project.elements[idx] = .path(e)
         case .text(var e):
-            e.frame = newFrame
+            // 크기 변화 비율로 fontSize 비례 조정 (높이 기준)
+            if e.frame.height > 0 {
+                let scale = newFrame.height / e.frame.height
+                if abs(scale - 1.0) > 0.001 {
+                    e.fontSize = max(6, e.fontSize * scale)
+                }
+            }
+            // fontSize 변경 후 실제 렌더 크기를 측정해 frame 보정
+            let measured = Self.measuredTextSize(
+                text: e.text, fontName: e.fontName, fontSize: e.fontSize,
+                isBold: e.isBold, isItalic: e.isItalic)
+            e.frame = CGRect(origin: newFrame.origin, size: measured)
             project.elements[idx] = .text(e)
         }
         project.updatedAt = Date()
@@ -413,6 +432,7 @@ final class IconDesignViewModel {
         alignment: TextAlignmentOption? = nil
     ) {
         checkpoint()
+        let affectsLayout = fontName != nil || fontSize != nil || isBold != nil || isItalic != nil
         for id in selectedElementIds {
             guard let idx = project.elements.firstIndex(where: { $0.id == id }),
                   case .text(var e) = project.elements[idx] else { continue }
@@ -424,6 +444,13 @@ final class IconDesignViewModel {
             if let v = textColor { e.textColor = v }
             if let v = alignment { e.alignment = v }
             e.show()
+            // 폰트 속성 변경 시 실제 렌더 크기로 frame 갱신 (선택 사각형 동기화)
+            if affectsLayout {
+                let newSize = Self.measuredTextSize(
+                    text: e.text, fontName: e.fontName, fontSize: e.fontSize,
+                    isBold: e.isBold, isItalic: e.isItalic)
+                e.frame = CGRect(origin: e.frame.origin, size: newSize)
+            }
             project.elements[idx] = .text(e)
         }
         // 기본값도 함께 업데이트
@@ -436,11 +463,40 @@ final class IconDesignViewModel {
         project.updatedAt = Date()
     }
 
+    /// NSLayoutManager를 사용해 텍스트의 실제 렌더링 크기를 측정한다.
+    /// InlineTextEditorView의 reportSize() 및 캔버스 렌더링과 동일한 파이프라인 사용.
+    static func measuredTextSize(text: String, fontName: String, fontSize: CGFloat,
+                                  isBold: Bool, isItalic: Bool) -> CGSize {
+        var font = NSFont(name: fontName, size: fontSize) ?? NSFont.systemFont(ofSize: fontSize)
+        if isBold   { font = NSFontManager.shared.convert(font, toHaveTrait: .boldFontMask)   }
+        if isItalic { font = NSFontManager.shared.convert(font, toHaveTrait: .italicFontMask) }
+
+        if text.isEmpty {
+            let lineH = ceil(font.ascender - font.descender + font.leading)
+            return CGSize(width: 1, height: lineH)
+        }
+        let ts = NSTextStorage(string: text, attributes: [.font: font])
+        let lm = NSLayoutManager()
+        let tc = NSTextContainer(containerSize: CGSize(
+            width:  CGFloat.greatestFiniteMagnitude,
+            height: CGFloat.greatestFiniteMagnitude))
+        ts.addLayoutManager(lm)
+        lm.addTextContainer(tc)
+        lm.ensureLayout(for: tc)
+        let used = lm.usedRect(for: tc)
+        return CGSize(width: ceil(used.maxX), height: ceil(used.maxY))
+    }
+
     // MARK: - Clipboard
-    private var clipboard: CanvasElement?
+    var clipboard: CanvasElement?
 
     func copySelectedElement() {
         clipboard = selectedElement
+    }
+
+    func cutSelectedElement() {
+        clipboard = selectedElement
+        deleteSelectedElement()
     }
 
     func pasteElement() {
@@ -489,6 +545,22 @@ final class IconDesignViewModel {
               idx > 0 else { return }
         checkpoint()
         project.swapElements(at: idx, idx - 1)
+    }
+
+    func bringToFront(id: UUID) {
+        guard let idx = project.elements.firstIndex(where: { $0.id == id }),
+              idx < project.elements.count - 1 else { return }
+        checkpoint()
+        let el = project.elements.remove(at: idx)
+        project.elements.append(el)
+    }
+
+    func sendToBack(id: UUID) {
+        guard let idx = project.elements.firstIndex(where: { $0.id == id }),
+              idx > 0 else { return }
+        checkpoint()
+        let el = project.elements.remove(at: idx)
+        project.elements.insert(el, at: 0)
     }
 
     // MARK: - Image import

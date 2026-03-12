@@ -168,9 +168,17 @@ struct PropertiesPanelView: View {
                         transformField(label: "°", value: CGFloat(el.rotation)) {
                             vm.setElementTransform(id: el.id, rotation: Double($0))
                         }
-                        transformField(label: "H", value: f.height) { vm.setElementTransform(id: el.id, height: $0) }
-                            .disabled(true)
-                            .opacity(0)
+                        // Scale % — Path/Text는 배율 기반이므로 Scale 입력 제공
+                        ScaleFieldView(element: el) { baseFrame, scale in
+                            let newW = baseFrame.width  * scale
+                            let newH = baseFrame.height * scale
+                            // 크기는 baseFrame 기준, 위치 중심은 현재 위치 유지
+                            let cx = el.frame.midX
+                            let cy = el.frame.midY
+                            vm.setElementFrame(id: el.id, frame: CGRect(
+                                x: cx - newW / 2, y: cy - newH / 2,
+                                width: newW, height: newH))
+                        }
                     }
                 } else {
                     Text("No selection")
@@ -508,10 +516,17 @@ private struct LayerRowView: View {
             .foregroundStyle(element.isVisible ? AnyShapeStyle(.primary) : AnyShapeStyle(.tertiary))
         }
         .contextMenu {
-            Button("Bring Forward") { vm.bringForward(id: element.id) }
-            Button("Send Backward") { vm.sendBackward(id: element.id) }
+            Button("Bring Forward")    { vm.bringForward(id: element.id) }
+                .keyboardShortcut("]", modifiers: .command)
+            Button("Send Backward")    { vm.sendBackward(id: element.id) }
+                .keyboardShortcut("[", modifiers: .command)
+            Button("Bring to Front")   { vm.bringToFront(id: element.id) }
+                .keyboardShortcut("]", modifiers: [.command, .shift])
+            Button("Send to Back")     { vm.sendToBack(id: element.id) }
+                .keyboardShortcut("[", modifiers: [.command, .shift])
             Divider()
             Button("Delete", role: .destructive) { vm.deleteElement(id: element.id) }
+                .keyboardShortcut(.delete, modifiers: [])
         }
     }
 
@@ -554,6 +569,61 @@ private struct ConstraintsMinimap: View {
                      with: .color(Color.accentColor.opacity(0.7)))
         }
         .clipShape(RoundedRectangle(cornerRadius: 2))
+    }
+}
+
+// MARK: - Scale field
+
+/// 선택 요소의 크기를 100% 기준으로 표시하고, 입력/방향키로 중심 고정 배율 적용.
+/// - 선택 직후 baseFrame을 캡처해 모든 조작은 baseFrame 기준 절대 배율로 적용
+/// - 방향키는 즉시 캔버스에 반영
+private struct ScaleFieldView: View {
+    let element: CanvasElement
+    /// (baseFrame, scaleFactor) — caller가 baseFrame 기준으로 element를 리사이즈
+    let onScale: (CGRect, CGFloat) -> Void
+
+    @State private var text = "100"
+    @State private var baseFrame: CGRect = .zero
+    @FocusState private var isFocused: Bool
+
+    var body: some View {
+        HStack(spacing: 3) {
+            Text("%")
+                .font(.caption)
+                .foregroundStyle(.secondary)
+                .frame(width: 12, alignment: .leading)
+            TextField("", text: $text)
+                .font(.caption.monospacedDigit())
+                .multilineTextAlignment(.trailing)
+                .textFieldStyle(.roundedBorder)
+                .focused($isFocused)
+                .onSubmit { applyCurrentText() }
+                .onAppear   { resetBase() }
+                .onChange(of: element.id) { resetBase() }
+                .onKeyPress(.upArrow)   { nudge(+1); return .handled }
+                .onKeyPress(.downArrow) { nudge(-1); return .handled }
+        }
+        .frame(maxWidth: .infinity)
+    }
+
+    /// 요소가 바뀔 때 현재 frame을 기준(100%)으로 저장
+    private func resetBase() {
+        baseFrame = element.frame
+        text = "100"
+    }
+
+    /// 텍스트 필드 엔터 — baseFrame 기준 절대 배율 적용
+    private func applyCurrentText() {
+        guard let pct = Double(text), pct > 0 else { text = "100"; return }
+        onScale(baseFrame, CGFloat(pct) / 100)
+    }
+
+    /// 방향키 — 1% 단위 즉시 적용
+    private func nudge(_ delta: CGFloat) {
+        let current = CGFloat(Double(text) ?? 100)
+        let next = max(1, current + delta)
+        text = String(format: "%.0f", next)
+        onScale(baseFrame, next / 100)
     }
 }
 
