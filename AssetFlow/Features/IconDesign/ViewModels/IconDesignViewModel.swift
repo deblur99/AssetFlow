@@ -270,6 +270,15 @@ final class IconDesignViewModel {
         }
         if changed { project.updatedAt = Date() }
     }
+
+    func updateSelectedShadow(_ config: ShadowConfig?) {
+        guard !selectedElementIds.isEmpty else { return }
+        for id in selectedElementIds {
+            guard let idx = project.elements.firstIndex(where: { $0.id == id }) else { continue }
+            project.elements[idx].shadow = config
+        }
+        project.updatedAt = Date()
+    }
 }
 
 // MARK: - Drawing gestures

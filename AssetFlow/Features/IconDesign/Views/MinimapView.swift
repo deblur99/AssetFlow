@@ -162,6 +162,12 @@ struct MinimapView: View {
             let path = shapePath(type: shape.shapeType, in: rect,
                                   cornerRadii: shape.cornerRadii.scaled(by: scale))
             ctx.drawLayer { inner in
+                if let sh = shape.shadow {
+                    inner.addFilter(.shadow(color: sh.color,
+                                            radius: sh.blur * scale,
+                                            x: sh.offsetX * scale,
+                                            y: sh.offsetY * scale))
+                }
                 applyRotation(to: &inner, center: center, degrees: shape.rotation)
                 inner.opacity = shape.opacity
                 inner.fill(path, with: .color(shape.fillColor))
@@ -177,6 +183,12 @@ struct MinimapView: View {
             let center = CGPoint(x: f.midX, y: f.midY)
             let p = polyline(from: pathEl.points)
             ctx.drawLayer { inner in
+                if let sh = pathEl.shadow {
+                    inner.addFilter(.shadow(color: sh.color,
+                                            radius: sh.blur * scale,
+                                            x: sh.offsetX * scale,
+                                            y: sh.offsetY * scale))
+                }
                 applyRotation(to: &inner, center: center, degrees: pathEl.rotation)
                 inner.opacity = pathEl.opacity
                 inner.stroke(p, with: .color(pathEl.color),
@@ -190,6 +202,12 @@ struct MinimapView: View {
             guard let cg = imgEl.image.cgImage(forProposedRect: nil,
                                                 context: nil, hints: nil) else { return }
             ctx.drawLayer { inner in
+                if let sh = imgEl.shadow {
+                    inner.addFilter(.shadow(color: sh.color,
+                                            radius: sh.blur * scale,
+                                            x: sh.offsetX * scale,
+                                            y: sh.offsetY * scale))
+                }
                 applyRotation(to: &inner, center: center, degrees: imgEl.rotation)
                 inner.opacity = imgEl.opacity
                 inner.draw(Image(cg, scale: 1.0, label: Text(imgEl.name)), in: rect)
@@ -225,6 +243,12 @@ struct MinimapView: View {
                 return true
             }
             ctx.drawLayer { inner in
+                if let sh = textEl.shadow {
+                    inner.addFilter(.shadow(color: sh.color,
+                                            radius: sh.blur * scale,
+                                            x: sh.offsetX * scale,
+                                            y: sh.offsetY * scale))
+                }
                 applyRotation(to: &inner, center: center, degrees: textEl.rotation)
                 inner.opacity = textEl.opacity
                 inner.draw(Image(nsImage: img), in: rect)

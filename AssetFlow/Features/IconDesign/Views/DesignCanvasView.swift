@@ -243,6 +243,12 @@ extension DesignCanvasView {
             let path = shapePath(type: shape.shapeType, in: rect,
                                  cornerRadii: shape.cornerRadii.scaled(by: z))
             ctx.drawLayer { inner in
+                if let sh = shape.shadow {
+                    inner.addFilter(.shadow(color: sh.color,
+                                            radius: sh.blur * z,
+                                            x: sh.offsetX * z,
+                                            y: sh.offsetY * z))
+                }
                 applyRotation(to: &inner, center: center, degrees: shape.rotation)
                 inner.opacity = shape.opacity
                 inner.fill(path, with: .color(shape.fillColor))
@@ -258,6 +264,12 @@ extension DesignCanvasView {
             let center = CGPoint(x: f.midX, y: f.midY)
             let p = polyline(from: pathEl.points, zoom: z)
             ctx.drawLayer { inner in
+                if let sh = pathEl.shadow {
+                    inner.addFilter(.shadow(color: sh.color,
+                                            radius: sh.blur * z,
+                                            x: sh.offsetX * z,
+                                            y: sh.offsetY * z))
+                }
                 applyRotation(to: &inner, center: center, degrees: pathEl.rotation)
                 inner.opacity = pathEl.opacity
                 inner.stroke(p, with: .color(pathEl.color),
@@ -271,6 +283,12 @@ extension DesignCanvasView {
             guard let cg = imgEl.image.cgImage(forProposedRect: nil,
                                                context: nil, hints: nil) else { return }
             ctx.drawLayer { inner in
+                if let sh = imgEl.shadow {
+                    inner.addFilter(.shadow(color: sh.color,
+                                            radius: sh.blur * z,
+                                            x: sh.offsetX * z,
+                                            y: sh.offsetY * z))
+                }
                 applyRotation(to: &inner, center: center, degrees: imgEl.rotation)
                 inner.opacity = imgEl.opacity
                 inner.draw(Image(cg, scale: 1.0, label: Text(imgEl.name)), in: rect)
@@ -313,6 +331,12 @@ extension DesignCanvasView {
                 return true
             }
             ctx.drawLayer { inner in
+                if let sh = textEl.shadow {
+                    inner.addFilter(.shadow(color: sh.color,
+                                            radius: sh.blur * z,
+                                            x: sh.offsetX * z,
+                                            y: sh.offsetY * z))
+                }
                 applyRotation(to: &inner, center: center, degrees: textEl.rotation)
                 inner.opacity = textEl.opacity
                 // Image(nsImage:)는 논리적 크기 기준으로 그려줌 — cgImage 변환 불필요
@@ -486,70 +510,17 @@ extension DesignCanvasView {
                     && vm.activeDragStart == nil
                     && marqueeRect == nil
                 {
-                    // ── 캔버스 영역 바깥 클릭 → 항상 패닝 ──────────────────────
                     let canvasBounds = CGRect(
                         x: viewSize.width  / 2 + vm.canvasOffset.width  - vm.project.canvasSize.width  * vm.zoom / 2,
                         y: viewSize.height / 2 + vm.canvasOffset.height - vm.project.canvasSize.height * vm.zoom / 2,
                         width:  vm.project.canvasSize.width  * vm.zoom,
                         height: vm.project.canvasSize.height * vm.zoom)
-                    if !canvasBounds.contains(value.startLocation) {
-                        isPanning = true
-                        panStartOffset = vm.canvasOffset
-                        NSCursor.closedHand.set()
-                        return
-                    }
-                    // ── 이동 모드: 선택 요소 핸들/바디면 변환, 그 외엔 패닝 ────────
-                    if vm.selectedTool == .move {
-                        if let el = vm.selectedElement {
-                            // 회전 핸들
-                            let rotPos = rotationHandleCanvasPos(for: el)
-                            if dist(start, rotPos) < handleTolerance {
-                                let center = CGPoint(x: el.frame.midX, y: el.frame.midY)
-                                let angle = atan2(start.y - center.y,
-                                                  start.x - center.x) * 180 / .pi
-                                vm.beginTransform()
-                                vm.activeTransform = .rotating(
-                                    startMouseAngle: angle,
-                                    startElementRotation: el.rotation,
-                                    center: center)
-                                NSCursor.crosshair.set()
-                                return
-                            }
-                            // 리사이즈 핸들
-                            if let handle = edgeResizeHandle(at: start, for: el) {
-                                vm.beginTransform()
-                                let anchor = handle.opposite.canvasPosition(
-                                    frame: el.frame, rotation: el.rotation)
-                                vm.activeTransform = .resizing(
-                                    handle: handle,
-                                    startFrame: el.frame,
-                                    startPoint: start,
-                                    startRotation: el.rotation,
-                                    anchorCanvas: anchor)
-                                resizeCursor(for: handle, rotation: el.rotation).set()
-                                return
-                            }
-                            // 요소 바디 → 이동
-                            if el.containsPoint(start) {
-                                vm.beginTransform()
-                                vm.activeTransform = .moving(startFrame: el.frame, startPoint: start)
-                                NSCursor.closedHand.set()
-                                return
-                            }
-                        }
-                        // 빈 영역 → 패닝
-                        isPanning = true
-                        panStartOffset = vm.canvasOffset
-                        NSCursor.closedHand.set()
-                        return
-                    }
 
-                    // ── 선택/그리기 모드 ─────────────────────────────────────
+                    // ── 핸들 감지 (canvas bounds 체크보다 먼저) ─────────────────
+                    // 이유: 가장자리 요소의 핸들/회전 아이콘은 캔버스 경계 바깥에 위치할 수 있다.
+                    // bounds 체크를 먼저 하면 해당 핸들을 클릭해도 panning으로 처리된다.
                     if let el = vm.selectedElement {
-                        // 제스처 타입은 시작 위치(start)로 판정한다
-                        // (현재 위치 pt는 DragGesture 첫 콜백 시 이미 이동했을 수 있음)
-
-                        // 1. 회전 핸들 (단일 선택 전용)
+                        // 회전 핸들
                         let rotPos = rotationHandleCanvasPos(for: el)
                         if dist(start, rotPos) < handleTolerance {
                             let center = CGPoint(x: el.frame.midX, y: el.frame.midY)
@@ -563,7 +534,7 @@ extension DesignCanvasView {
                             NSCursor.crosshair.set()
                             return
                         }
-                        // 2. 리사이즈 (단일 선택 전용)
+                        // 리사이즈 핸들
                         if let handle = edgeResizeHandle(at: start, for: el) {
                             vm.beginTransform()
                             let anchor = handle.opposite.canvasPosition(
@@ -579,7 +550,35 @@ extension DesignCanvasView {
                         }
                     }
 
-                    // 3. 선택 모드에서 선택된 요소 위 드래그 → 그룹 이동
+                    // ── 캔버스 영역 바깥 클릭 → 항상 패닝 ──────────────────────
+                    if !canvasBounds.contains(value.startLocation) {
+                        isPanning = true
+                        panStartOffset = vm.canvasOffset
+                        NSCursor.closedHand.set()
+                        return
+                    }
+
+                    // ── 이동 모드: 요소 바디면 이동, 그 외엔 패닝 ─────────────────
+                    // (핸들은 위에서 이미 처리됨)
+                    if vm.selectedTool == .move {
+                        if let el = vm.selectedElement {
+                            if el.containsPoint(start) {
+                                vm.beginTransform()
+                                vm.activeTransform = .moving(startFrame: el.frame, startPoint: start)
+                                NSCursor.closedHand.set()
+                                return
+                            }
+                        }
+                        // 빈 영역 → 패닝
+                        isPanning = true
+                        panStartOffset = vm.canvasOffset
+                        NSCursor.closedHand.set()
+                        return
+                    }
+
+                    // ── 선택/그리기 모드 (핸들은 위에서 이미 처리됨) ─────────────
+
+                    // 선택 모드에서 선택된 요소 위 드래그 → 그룹 이동
                     if vm.selectedTool == .select && !vm.selectedElementIds.isEmpty {
                         let hitSelected = vm.elements.first {
                             vm.selectedElementIds.contains($0.id) && $0.containsPoint(start)
@@ -601,7 +600,7 @@ extension DesignCanvasView {
                         }
                     }
 
-                    // 4. 그리기 도구에서 방금 생성한 요소 이동
+                    // 그리기 도구에서 방금 생성한 요소 이동
                     if let el = vm.selectedElement {
                         let isJustCreated = el.id == vm.justCreatedElementId
                         if isJustCreated && el.containsPoint(start) {
@@ -613,10 +612,9 @@ extension DesignCanvasView {
                         }
                     }
 
-                    // 5. 선택 모드 + 빈 영역 → 이전 도구 복원 or 마키 선택 시작
+                    // 선택 모드 + 빈 영역 → 이전 도구 복원 or 마키 선택 시작
                     if vm.selectedTool == .select {
                         if let prevTool = vm.previousDrawingTool {
-                            // 이전 그리기 도구로 자동 복원 후 그리기 시작
                             vm.selectedTool = prevTool
                             vm.selectedElementIds = []
                             vm.handleDragChanged(at: pt)
@@ -627,7 +625,7 @@ extension DesignCanvasView {
                         return
                     }
 
-                    // 6. 그리기 도구
+                    // 그리기 도구
                     vm.handleDragChanged(at: pt)
                     return
                 }

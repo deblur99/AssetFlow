@@ -39,6 +39,7 @@ nonisolated struct TextElement: Identifiable {
     var isItalic: Bool   = false
     var textColor: Color = .black
     var alignment: TextAlignmentOption = .left
+    var shadow: ShadowConfig? = nil
     
     func show() {
         print("TextElement: \(text) at \(frame.origin), font: \(fontName) \(fontSize)pt, color: \(textColor), alignment: \(alignment)")
@@ -77,6 +78,15 @@ nonisolated struct CornerRadii: Equatable {
     }
 }
 
+// MARK: - Shadow
+
+nonisolated struct ShadowConfig: Equatable {
+    var color:   Color   = Color.black.opacity(0.35)
+    var blur:    CGFloat = 6
+    var offsetX: CGFloat = 0
+    var offsetY: CGFloat = 4
+}
+
 // MARK: - Leaf element types
 
 nonisolated struct ShapeElement: Identifiable {
@@ -92,6 +102,7 @@ nonisolated struct ShapeElement: Identifiable {
     var strokeColor: Color
     var strokeWidth: CGFloat
     var cornerRadii: CornerRadii = CornerRadii()
+    var shadow: ShadowConfig?   = nil
 
     /// 단일 반경 접근 (backward compat / uniform 체크 용도)
     var cornerRadius: CGFloat {
@@ -112,6 +123,7 @@ nonisolated struct PathElement: Identifiable {
     var points: [CGPoint]
     var color: Color
     var lineWidth: CGFloat
+    var shadow: ShadowConfig? = nil
 
     var frame: CGRect {
         guard !points.isEmpty else { return .zero }
@@ -131,6 +143,7 @@ nonisolated struct ImageElement: Identifiable {
     var rotation: Double = 0   // degrees
     var frame: CGRect
     var image: NSImage
+    var shadow: ShadowConfig? = nil
 }
 
 // MARK: - Wrapper enum for polymorphic storage
@@ -235,6 +248,25 @@ nonisolated enum CanvasElement: Identifiable {
         }
     }
 
+    var shadow: ShadowConfig? {
+        get {
+            switch self {
+            case .shape(let e): e.shadow
+            case .path(let e):  e.shadow
+            case .image(let e): e.shadow
+            case .text(let e):  e.shadow
+            }
+        }
+        set {
+            switch self {
+            case .shape(var e): e.shadow = newValue; self = .shape(e)
+            case .path(var e):  e.shadow = newValue; self = .path(e)
+            case .image(var e): e.shadow = newValue; self = .image(e)
+            case .text(var e):  e.shadow = newValue; self = .text(e)
+            }
+        }
+    }
+
     // MARK: - Rotation-aware hit testing
 
     func containsPoint(_ point: CGPoint, tolerance: CGFloat = 4) -> Bool {
@@ -258,7 +290,8 @@ nonisolated enum CanvasElement: Identifiable {
                 frame: e.frame.offsetBy(dx: offset, dy: offset),
                 shapeType: e.shapeType,
                 fillColor: e.fillColor, strokeColor: e.strokeColor,
-                strokeWidth: e.strokeWidth, cornerRadii: e.cornerRadii)
+                strokeWidth: e.strokeWidth, cornerRadii: e.cornerRadii,
+                shadow: e.shadow)
             return .shape(copy)
         case .path(let e):
             let moved = PathElement(
@@ -266,7 +299,7 @@ nonisolated enum CanvasElement: Identifiable {
                 isVisible: e.isVisible, isLocked: e.isLocked,
                 opacity: e.opacity, rotation: e.rotation,
                 points: e.points.map { CGPoint(x: $0.x + offset, y: $0.y + offset) },
-                color: e.color, lineWidth: e.lineWidth)
+                color: e.color, lineWidth: e.lineWidth, shadow: e.shadow)
             return .path(moved)
         case .image(let e):
             let moved = ImageElement(
@@ -274,7 +307,7 @@ nonisolated enum CanvasElement: Identifiable {
                 isVisible: e.isVisible, isLocked: e.isLocked,
                 opacity: e.opacity, rotation: e.rotation,
                 frame: e.frame.offsetBy(dx: offset, dy: offset),
-                image: e.image)
+                image: e.image, shadow: e.shadow)
             return .image(moved)
         case .text(let e):
             var copy = e
