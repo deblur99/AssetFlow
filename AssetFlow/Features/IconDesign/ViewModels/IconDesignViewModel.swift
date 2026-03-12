@@ -1,6 +1,59 @@
 import SwiftUI
 import UniformTypeIdentifiers
 
+// MARK: - Export types
+
+enum ExportFormat: String, CaseIterable, Identifiable {
+    case png  = "PNG"
+    case jpeg = "JPEG"
+    case svg  = "SVG"
+    case pdf  = "PDF"
+
+    var id: String { rawValue }
+
+    var fileExtension: String {
+        switch self {
+        case .png:  "png"
+        case .jpeg: "jpg"
+        case .svg:  "svg"
+        case .pdf:  "pdf"
+        }
+    }
+
+    var utType: UTType {
+        switch self {
+        case .png:  .png
+        case .jpeg: .jpeg
+        case .svg:  UTType(filenameExtension: "svg") ?? .image
+        case .pdf:  .pdf
+        }
+    }
+}
+
+enum ExportSize: String, CaseIterable, Identifiable {
+    case ios     = "1024 × 1024"
+    case watchOS = "1088 × 1088"
+    case tvOS    = "800 × 480"
+
+    var id: String { rawValue }
+
+    var size: CGSize {
+        switch self {
+        case .ios:     CGSize(width: 1024, height: 1024)
+        case .watchOS: CGSize(width: 1088, height: 1088)
+        case .tvOS:    CGSize(width: 800,  height: 480)
+        }
+    }
+
+    var subtitle: String {
+        switch self {
+        case .ios:     "iOS, iPadOS, macOS, visionOS"
+        case .watchOS: "watchOS"
+        case .tvOS:    "tvOS"
+        }
+    }
+}
+
 // MARK: - Active transform session
 
 enum ActiveTransform {
@@ -79,6 +132,11 @@ final class IconDesignViewModel {
     var activePathPoints: [CGPoint] = []
     var activeDragStart: CGPoint?
     var activeDragCurrent: CGPoint?
+
+    // MARK: - Export state
+
+    var exportFormat: ExportFormat = .png
+    var exportSize: ExportSize = .ios
 
     // MARK: - Active transform session
 

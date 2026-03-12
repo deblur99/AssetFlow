@@ -9,7 +9,6 @@ struct IconDesignView: View {
     
     @State private var isShowingRenameMenu = false
     @State private var isShowingZoomMenu = false
-    @State private var isShowingExportMenu = false
 
     var body: some View {
         HStack(spacing: 0) {
@@ -89,15 +88,11 @@ struct IconDesignView: View {
                 Divider()
 
                 Button {
-                    isShowingExportMenu.toggle()
+                    ExportService.export(vm: vm)
                 } label: {
                     Label("Export", systemImage: "square.and.arrow.up")
                 }
                 .help("Export Icon")
-                .popover(isPresented: $isShowingExportMenu, arrowEdge: .bottom) {
-                    Text("Export options coming soon.")
-                        .padding()
-                }
             }
         }
         .background {

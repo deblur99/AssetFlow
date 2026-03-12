@@ -3,32 +3,56 @@ import SwiftUI
 
 struct PropertiesPanelView: View {
     @Bindable var vm: IconDesignViewModel
+    @State private var panelTab: PanelTab = .attributes
+
+    private enum PanelTab: String, CaseIterable {
+        case attributes = "Attributes"
+        case export     = "Export"
+    }
 
     var body: some View {
-        VSplitView {
-            ScrollView {
-                VStack(spacing: 0) {
-                    if !isBackgroundSelected {
-                        transformSection
-                        Divider()
-                        constraintsSection
-                        Divider()
-                    }
-                    if showsCornerRadius {
-                        cornerRadiusSection
-                        Divider()
-                    }
-                    styleSection
-                    if hasTextSelection {
-                        Divider()
-                        typographySection
-                    }
+        VStack(spacing: 0) {
+            Picker("Panel tab", selection: $panelTab) {
+                ForEach(PanelTab.allCases, id: \.self) { tab in
+                    Text(tab.rawValue).tag(tab)
                 }
             }
-            .frame(minHeight: 600)
+            .pickerStyle(.segmented)
+            .labelsHidden()
+            .padding(.horizontal, 8)
+            .padding(.vertical, 6)
 
-            layersSection
-                .frame(minHeight: 60)
+            Divider()
+
+            if panelTab == .attributes {
+                VSplitView {
+                    ScrollView {
+                        VStack(spacing: 0) {
+                            if !isBackgroundSelected {
+                                transformSection
+                                Divider()
+                                constraintsSection
+                                Divider()
+                            }
+                            if showsCornerRadius {
+                                cornerRadiusSection
+                                Divider()
+                            }
+                            styleSection
+                            if hasTextSelection {
+                                Divider()
+                                typographySection
+                            }
+                        }
+                    }
+                    .frame(minHeight: 600)
+
+                    layersSection
+                        .frame(minHeight: 60)
+                }
+            } else {
+                ExportPanelView(vm: vm)
+            }
         }
         .background(Color(nsColor: .controlBackgroundColor))
         .onHover { hover in
