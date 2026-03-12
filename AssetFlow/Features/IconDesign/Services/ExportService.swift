@@ -226,38 +226,47 @@ struct CanvasExportView: View {
 @MainActor
 enum ExportService {
     static func export(vm: IconDesignViewModel) {
-        let elements   = vm.project.elements
-        let canvasSize = vm.project.canvasSize
-        let targetSize = vm.exportSize.size
+        // Capture all state before opening the panel
+        let elements    = vm.project.elements
+        let canvasSize  = vm.project.canvasSize
+        let targetSize  = vm.exportSize.size
+        let format      = vm.exportFormat
+        let projectName = vm.project.name
 
         let panel = NSSavePanel()
-        panel.allowedContentTypes = [vm.exportFormat.utType]
-        panel.nameFieldStringValue = vm.project.name
-        guard panel.runModal() == .OK, let url = panel.url else { return }
+        panel.allowedContentTypes = [format.utType]
+        panel.nameFieldStringValue = projectName
 
-        if vm.exportFormat == .svg {
-            let svg = SVGGenerator.generate(elements: elements,
-                                            canvasSize: canvasSize,
-                                            targetSize: targetSize)
-            try? svg.data(using: .utf8)?.write(to: url)
-            return
+        // Use begin(completionHandler:) instead of runModal() to avoid
+        // AppKit thread-safety assertions triggered from SwiftUI button actions.
+        panel.begin { response in
+            guard response == .OK, let url = panel.url else { return }
+            Task { @MainActor in
+                if format == .svg {
+                    let svg = SVGGenerator.generate(elements: elements,
+                                                    canvasSize: canvasSize,
+                                                    targetSize: targetSize)
+                    try? svg.data(using: .utf8)?.write(to: url)
+                    return
+                }
+
+                let exportView = CanvasExportView(elements: elements,
+                                                  canvasSize: canvasSize,
+                                                  targetSize: targetSize)
+                let renderer = ImageRenderer(content: exportView)
+                renderer.scale = 1.0
+                guard let nsImage = renderer.nsImage else { return }
+
+                let data: Data?
+                switch format {
+                case .png:  data = nsImage.exportPNGData()
+                case .jpeg: data = nsImage.exportJPEGData()
+                case .pdf:  data = makePDFData(from: nsImage, size: targetSize)
+                case .svg:  data = nil
+                }
+                try? data?.write(to: url)
+            }
         }
-
-        let exportView = CanvasExportView(elements: elements,
-                                          canvasSize: canvasSize,
-                                          targetSize: targetSize)
-        let renderer = ImageRenderer(content: exportView)
-        renderer.scale = 1.0
-        guard let nsImage = renderer.nsImage else { return }
-
-        let data: Data?
-        switch vm.exportFormat {
-        case .png:  data = nsImage.exportPNGData()
-        case .jpeg: data = nsImage.exportJPEGData()
-        case .pdf:  data = makePDFData(from: nsImage, size: targetSize)
-        case .svg:  data = nil
-        }
-        try? data?.write(to: url)
     }
 
     private static func makePDFData(from image: NSImage, size: CGSize) -> Data? {
