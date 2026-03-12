@@ -693,10 +693,14 @@ extension DesignCanvasView {
 
                 // 마키 선택 완료
                 if let mq = marqueeRect {
-                    if mq.width > 2 && mq.height > 2 {
-                        vm.applyMarqueeSelection(in: mq)
-                    }
                     marqueeRect = nil
+                    if mq.width > 2 && mq.height > 2 {
+                        // 실제 드래그 → 마키 선택
+                        vm.applyMarqueeSelection(in: mq)
+                    } else {
+                        // 탭으로 끝난 마키(거의 이동 없음) → 일반 탭 처리
+                        vm.handleTap(at: endPt)
+                    }
                     cursorFor(endPt).set()
                     return
                 }
