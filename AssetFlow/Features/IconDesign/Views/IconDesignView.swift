@@ -114,6 +114,8 @@ struct IconDesignView: View {
                     .keyboardShortcut("z", modifiers: .command)
                 Button("") { vm.redo() }
                     .keyboardShortcut("z", modifiers: [.command, .shift])
+                Button("") { vm.isGridEnabled.toggle() }
+                    .keyboardShortcut("g", modifiers: .command)
             }
             .hidden()
         }

@@ -31,7 +31,25 @@ struct CanvasToolbarView: View {
                 }
             }
             
-            
+            Divider()
+                .padding(.vertical, 4)
+
+            // 격자 토글 (⌘G)
+            Button {
+                vm.isGridEnabled.toggle()
+            } label: {
+                Image(systemName: vm.isGridEnabled ? "grid" : "grid")
+                    .font(.system(size: 14))
+                    .foregroundStyle(vm.isGridEnabled ? Color.accentColor : Color.secondary)
+                    .frame(width: 28, height: 28)
+                    .background(vm.isGridEnabled
+                        ? Color.accentColor.opacity(0.15)
+                        : Color.clear,
+                        in: RoundedRectangle(cornerRadius: 6))
+            }
+            .buttonStyle(.plain)
+            .help("Show Grid — ⌘G")
+
             Spacer()
         }
         .padding(.horizontal, 8)
