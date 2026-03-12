@@ -8,10 +8,12 @@ struct PropertiesPanelView: View {
         VSplitView {
             ScrollView {
                 VStack(spacing: 0) {
-                    transformSection
-                    Divider()
-                    constraintsSection
-                    Divider()
+                    if !isBackgroundSelected {
+                        transformSection
+                        Divider()
+                        constraintsSection
+                        Divider()
+                    }
                     if showsCornerRadius {
                         cornerRadiusSection
                         Divider()
@@ -32,6 +34,12 @@ struct PropertiesPanelView: View {
         .onHover { hover in
             if hover { NSCursor.arrow.set() }
         }
+    }
+
+    private var isBackgroundSelected: Bool {
+        guard vm.selectedElementIds.count == 1,
+              let id = vm.selectedElementIds.first else { return false }
+        return vm.backgroundElement?.id == id
     }
 
     /// Corner Radius 섹션을 표시할 조건: 선택된 사각형 요소 or 사각형 도구 활성 (다중 선택 시 비표시)
@@ -413,6 +421,8 @@ struct PropertiesPanelView: View {
                                   value: Binding(get: { CGFloat(t.opacity * 100) },
                                                  set: { vm.updateSelectedStyle(opacity: Double($0 / 100)) }),
                                   range: 0...100, format: "%.0f%%")
+                    case .background(let bg):
+                        backgroundStyleContent(bg: bg)
                     }
                 } else if !vm.selectedElementIds.isEmpty {
                     // ── 다중 요소 선택 ────────────────────────────────────
@@ -520,6 +530,133 @@ struct PropertiesPanelView: View {
                 .labelsHidden()
                 .toggleStyle(.checkbox)
                 .help("픽셀을 정리하여 울퉁불퉁한 획을 부드럽게 정돈합니다")
+        }
+    }
+
+    // MARK: - Background style UI
+
+    @ViewBuilder
+    private func backgroundStyleContent(bg: BackgroundElement) -> some View {
+        sliderRow(label: "Opacity",
+                  value: Binding(get: { CGFloat(bg.opacity * 100) },
+                                 set: { vm.updateBackgroundOpacity(Double($0 / 100)) }),
+                  range: 0...100, format: "%.0f%%")
+
+        // Solid / Gradient mode toggle
+        HStack {
+            Text("Fill")
+                .font(.caption)
+                .foregroundStyle(.secondary)
+                .frame(width: 46, alignment: .leading)
+            Picker("", selection: Binding(
+                get: { bg.gradient != nil },
+                set: { useGradient in
+                    vm.updateBackgroundGradient(useGradient ? GradientConfig() : nil)
+                }
+            )) {
+                Text("Solid").tag(false)
+                Text("Gradient").tag(true)
+            }
+            .pickerStyle(.segmented)
+            .labelsHidden()
+        }
+
+        if let grad = bg.gradient {
+            gradientRows(config: grad, onChange: { vm.updateBackgroundGradient($0) })
+        } else {
+            colorRow(label: "Color", value: bg.fillColor,
+                     onChange: { vm.updateBackgroundFillColor($0) })
+        }
+    }
+
+    @ViewBuilder
+    private func gradientRows(config: GradientConfig,
+                               onChange: @escaping (GradientConfig) -> Void) -> some View {
+        // Type picker
+        HStack {
+            Text("Type")
+                .font(.caption)
+                .foregroundStyle(.secondary)
+                .frame(width: 46, alignment: .leading)
+            Picker("", selection: Binding(
+                get: { config.type },
+                set: { new in var c = config; c.type = new; onChange(c) }
+            )) {
+                ForEach(GradientConfig.GradientType.allCases, id: \.self) { t in
+                    Text(t.rawValue).tag(t)
+                }
+            }
+            .pickerStyle(.segmented)
+            .labelsHidden()
+        }
+
+        // Angle (linear only)
+        if config.type == .linear {
+            sliderRow(label: "Angle",
+                      value: Binding(
+                          get: { CGFloat(config.angle) },
+                          set: { new in var c = config; c.angle = Double(new); onChange(c) }
+                      ),
+                      range: 0...360, format: "%.0f°")
+        }
+
+        // Color stops
+        HStack {
+            Text("Stops")
+                .font(.caption)
+                .foregroundStyle(.secondary)
+            Spacer()
+            if config.stops.count < 6 {
+                Button {
+                    var c = config
+                    let maxLoc = c.stops.map(\.location).max() ?? 1.0
+                    let newLoc = min(maxLoc + 0.15, 1.0)
+                    c.stops.append(GradientStop(color: .gray, location: newLoc))
+                    c.stops.sort { $0.location < $1.location }
+                    onChange(c)
+                } label: {
+                    Image(systemName: "plus.circle")
+                        .font(.caption)
+                        .foregroundStyle(.secondary)
+                }
+                .buttonStyle(.plain)
+                .help("Add stop")
+            }
+        }
+
+        ForEach(config.stops.indices, id: \.self) { i in
+            HStack(spacing: 6) {
+                ColorPicker("", selection: Binding(
+                    get: { config.stops[i].color },
+                    set: { new in var c = config; c.stops[i].color = new; onChange(c) }
+                ), supportsOpacity: true)
+                .labelsHidden()
+                .frame(width: 28, height: 20)
+
+                Slider(value: Binding(
+                    get: { config.stops[i].location },
+                    set: { new in var c = config; c.stops[i].location = new; onChange(c) }
+                ), in: 0...1)
+
+                Text("\(Int(config.stops[i].location * 100))%")
+                    .font(.caption2)
+                    .foregroundStyle(.tertiary)
+                    .frame(width: 28, alignment: .trailing)
+
+                if config.stops.count > 2 {
+                    Button {
+                        var c = config
+                        c.stops.remove(at: i)
+                        onChange(c)
+                    } label: {
+                        Image(systemName: "minus.circle.fill")
+                            .font(.caption)
+                            .foregroundStyle(.tertiary)
+                    }
+                    .buttonStyle(.plain)
+                    .help("Remove stop")
+                }
+            }
         }
     }
 
@@ -792,7 +929,8 @@ private struct LayersListView: View {
         .onKeyPress(.return) {
             guard vm.selectedElementIds.count == 1,
                   let id = vm.selectedElementIds.first,
-                  renamingElementId == nil else { return .ignored }
+                  renamingElementId == nil,
+                  vm.backgroundElement?.id != id else { return .ignored }
             renamingElementId = id
             return .handled
         }
@@ -861,6 +999,7 @@ private struct LayerRowView: View {
     @FocusState private var fieldFocused: Bool
 
     private var isRenaming: Bool { renamingElementId == element.id }
+    private var isBackground: Bool { if case .background = element { return true }; return false }
 
     private var isSingleSelected: Bool {
         vm.selectedElementIds.count == 1 && vm.selectedElementIds.contains(element.id)
@@ -870,7 +1009,7 @@ private struct LayerRowView: View {
         HStack(spacing: 6) {
             Image(systemName: iconName)
                 .font(.caption)
-                .foregroundStyle(.secondary)
+                .foregroundStyle(isBackground ? AnyShapeStyle(Color.accentColor) : AnyShapeStyle(.secondary))
                 .frame(width: 14)
 
             if isRenaming {
@@ -885,6 +1024,7 @@ private struct LayerRowView: View {
                 Text(element.name)
                     .font(.caption)
                     .lineLimit(1)
+                    .foregroundStyle(isBackground ? AnyShapeStyle(.primary) : AnyShapeStyle(.primary))
             }
 
             Spacer()
@@ -896,28 +1036,32 @@ private struct LayerRowView: View {
             .buttonStyle(.plain)
             .foregroundStyle(element.isVisible ? AnyShapeStyle(.primary) : AnyShapeStyle(.tertiary))
         }
-        // 더블 클릭으로 이름 변경 시작
+        // 더블 클릭으로 이름 변경 시작 (background 제외)
         .simultaneousGesture(
             TapGesture(count: 2).onEnded {
-                guard isSingleSelected else { return }
+                guard isSingleSelected, !isBackground else { return }
                 startRename()
             }
         )
         .contextMenu {
-            Button("Rename") { startRename() }
-                .disabled(vm.selectedElementIds.count > 1)
-            Divider()
-            Button("Bring Forward")  { vm.bringForward(id: element.id) }
-                .keyboardShortcut("]", modifiers: .command)
-            Button("Send Backward")  { vm.sendBackward(id: element.id) }
-                .keyboardShortcut("[", modifiers: .command)
-            Button("Bring to Front") { vm.bringToFront(id: element.id) }
-                .keyboardShortcut("]", modifiers: [.command, .shift])
-            Button("Send to Back")   { vm.sendToBack(id: element.id) }
-                .keyboardShortcut("[", modifiers: [.command, .shift])
-            Divider()
-            Button("Delete", role: .destructive) { vm.deleteElement(id: element.id) }
-                .keyboardShortcut(.delete, modifiers: [])
+            if isBackground {
+                Text("Background layer").font(.caption).foregroundStyle(.secondary)
+            } else {
+                Button("Rename") { startRename() }
+                    .disabled(vm.selectedElementIds.count > 1)
+                Divider()
+                Button("Bring Forward")  { vm.bringForward(id: element.id) }
+                    .keyboardShortcut("]", modifiers: .command)
+                Button("Send Backward")  { vm.sendBackward(id: element.id) }
+                    .keyboardShortcut("[", modifiers: .command)
+                Button("Bring to Front") { vm.bringToFront(id: element.id) }
+                    .keyboardShortcut("]", modifiers: [.command, .shift])
+                Button("Send to Back")   { vm.sendToBack(id: element.id) }
+                    .keyboardShortcut("[", modifiers: [.command, .shift])
+                Divider()
+                Button("Delete", role: .destructive) { vm.deleteElement(id: element.id) }
+                    .keyboardShortcut(.delete, modifiers: [])
+            }
         }
         // renamingElementId가 이 행으로 설정되면 TextField 포커스 부여
         .onChange(of: renamingElementId) { _, id in
@@ -929,6 +1073,7 @@ private struct LayerRowView: View {
     }
 
     private func startRename() {
+        guard !isBackground else { return }
         draftName = element.name
         renamingElementId = element.id
         Task { @MainActor in fieldFocused = true }
@@ -945,10 +1090,11 @@ private struct LayerRowView: View {
 
     private var iconName: String {
         switch element {
-        case .shape(let s): s.shapeType == .ellipse ? "circle" : "rectangle"
-        case .path: "scribble"
-        case .image: "photo"
-        case .text: "textformat"
+        case .background:        "rectangle.fill"
+        case .shape(let s):      s.shapeType == .ellipse ? "circle" : "rectangle"
+        case .path:              "scribble"
+        case .image:             "photo"
+        case .text:              "textformat"
         }
     }
 }

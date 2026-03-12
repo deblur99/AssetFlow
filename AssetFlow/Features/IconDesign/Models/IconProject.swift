@@ -4,7 +4,6 @@ nonisolated struct IconProject: Identifiable {
     let id: UUID
     var name: String
     var canvasSize: CGSize
-    var backgroundColor: Color
     var elements: [CanvasElement]
     let createdAt: Date
     var updatedAt: Date
@@ -12,14 +11,15 @@ nonisolated struct IconProject: Identifiable {
     init(
         id: UUID = UUID(),
         name: String = "Untitled Icon",
-        canvasSize: CGSize = CGSize(width: 1024, height: 1024), // 캔버스 기본 크기이나 실제로는 창 크기, 캔버스 확대 비율에 의해 자동 조절
+        canvasSize: CGSize = CGSize(width: 1024, height: 1024),
         backgroundColor: Color = .white
     ) {
         self.id = id
         self.name = name
         self.canvasSize = canvasSize
-        self.backgroundColor = backgroundColor
-        self.elements = []
+        self.elements = [
+            .background(BackgroundElement(id: UUID(), fillColor: backgroundColor))
+        ]
         self.createdAt = Date()
         self.updatedAt = Date()
     }

@@ -80,8 +80,7 @@ struct DesignCanvasView: View {
                     zoom: vm.zoom,
                     canvasOffset: $vm.canvasOffset,
                     viewportSize: geometry.size,
-                    elements: vm.elements,
-                    backgroundColor: vm.project.backgroundColor)
+                    elements: vm.elements)
                     .padding(12)
             }
         }
@@ -135,8 +134,6 @@ struct DesignCanvasView: View {
 
     private var canvasLayer: some View {
         ZStack(alignment: .topLeading) {
-            vm.project.backgroundColor
-
             Canvas { ctx, _ in
                 let z = vm.zoom
                 for element in vm.elements where element.isVisible {
@@ -341,6 +338,42 @@ extension DesignCanvasView {
                 inner.opacity = textEl.opacity
                 // Image(nsImage:)는 논리적 크기 기준으로 그려줌 — cgImage 변환 불필요
                 inner.draw(Image(nsImage: img), in: rect)
+            }
+
+        case .background(let bg):
+            let rect = CGRect(origin: .zero,
+                              size: CGSize(width: vm.project.canvasSize.width * z,
+                                           height: vm.project.canvasSize.height * z))
+            ctx.drawLayer { inner in
+                inner.opacity = bg.opacity
+                if let grad = bg.gradient {
+                    let sorted = grad.stops.sorted { $0.location < $1.location }
+                    let gradient = Gradient(stops: sorted.map {
+                        Gradient.Stop(color: $0.color, location: $0.location)
+                    })
+                    switch grad.type {
+                    case .linear:
+                        let r = CGFloat(grad.angle * .pi / 180)
+                        let start = CGPoint(x: rect.midX - sin(r) * rect.width  * 0.5,
+                                            y: rect.midY - cos(r) * rect.height * 0.5)
+                        let end   = CGPoint(x: rect.midX + sin(r) * rect.width  * 0.5,
+                                            y: rect.midY + cos(r) * rect.height * 0.5)
+                        inner.fill(Path(rect), with: .linearGradient(gradient,
+                                                                      startPoint: start,
+                                                                      endPoint: end))
+                    case .radial:
+                        let radius = hypot(rect.width, rect.height) * 0.5
+                        inner.fill(Path(rect), with: .radialGradient(gradient,
+                                                                      center: CGPoint(x: rect.midX, y: rect.midY),
+                                                                      startRadius: 0,
+                                                                      endRadius: radius))
+                    case .angular:
+                        inner.fill(Path(rect), with: .conicGradient(gradient,
+                                                                     center: CGPoint(x: rect.midX, y: rect.midY)))
+                    }
+                } else {
+                    inner.fill(Path(rect), with: .color(bg.fillColor))
+                }
             }
         }
     }

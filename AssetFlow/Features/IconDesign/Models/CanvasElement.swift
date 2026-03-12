@@ -87,6 +87,39 @@ nonisolated struct ShadowConfig: Equatable {
     var offsetY: CGFloat = 4
 }
 
+// MARK: - Gradient
+
+nonisolated struct GradientStop: Equatable {
+    var color:    Color
+    var location: CGFloat  // 0...1
+}
+
+nonisolated struct GradientConfig: Equatable {
+    nonisolated enum GradientType: String, CaseIterable {
+        case linear  = "Linear"
+        case radial  = "Radial"
+        case angular = "Angular"
+    }
+    var type:  GradientType  = .linear
+    var stops: [GradientStop] = [
+        GradientStop(color: .white, location: 0),
+        GradientStop(color: Color(red: 0.20, green: 0.47, blue: 0.95), location: 1)
+    ]
+    /// Angle in degrees for linear gradients: 0 = top→bottom, 90 = left→right
+    var angle: Double = 180
+}
+
+// MARK: - Background element
+
+nonisolated struct BackgroundElement: Identifiable {
+    let id: UUID
+    var name:      String          = "Background"
+    var isVisible: Bool            = true
+    var opacity:   Double          = 1.0
+    var fillColor: Color           = .white
+    var gradient:  GradientConfig? = nil
+}
+
 // MARK: - Leaf element types
 
 nonisolated struct ShapeElement: Identifiable {
@@ -153,31 +186,35 @@ nonisolated enum CanvasElement: Identifiable {
     case path(PathElement)
     case image(ImageElement)
     case text(TextElement)
+    case background(BackgroundElement)
 
     var id: UUID {
         switch self {
-        case .shape(let e): e.id
-        case .path(let e):  e.id
-        case .image(let e): e.id
-        case .text(let e):  e.id
+        case .shape(let e):      e.id
+        case .path(let e):       e.id
+        case .image(let e):      e.id
+        case .text(let e):       e.id
+        case .background(let e): e.id
         }
     }
 
     var name: String {
         get {
             switch self {
-            case .shape(let e): e.name
-            case .path(let e):  e.name
-            case .image(let e): e.name
-            case .text(let e):  e.name
+            case .shape(let e):      e.name
+            case .path(let e):       e.name
+            case .image(let e):      e.name
+            case .text(let e):       e.name
+            case .background(let e): e.name
             }
         }
         set {
             switch self {
-            case .shape(var e): e.name = newValue; self = .shape(e)
-            case .path(var e):  e.name = newValue; self = .path(e)
-            case .image(var e): e.name = newValue; self = .image(e)
-            case .text(var e):  e.name = newValue; self = .text(e)
+            case .shape(var e):      e.name = newValue; self = .shape(e)
+            case .path(var e):       e.name = newValue; self = .path(e)
+            case .image(var e):      e.name = newValue; self = .image(e)
+            case .text(var e):       e.name = newValue; self = .text(e)
+            case .background(var e): e.name = newValue; self = .background(e)
             }
         }
     }
@@ -185,46 +222,51 @@ nonisolated enum CanvasElement: Identifiable {
     var isVisible: Bool {
         get {
             switch self {
-            case .shape(let e): e.isVisible
-            case .path(let e):  e.isVisible
-            case .image(let e): e.isVisible
-            case .text(let e):  e.isVisible
+            case .shape(let e):      e.isVisible
+            case .path(let e):       e.isVisible
+            case .image(let e):      e.isVisible
+            case .text(let e):       e.isVisible
+            case .background(let e): e.isVisible
             }
         }
         set {
             switch self {
-            case .shape(var e): e.isVisible = newValue; self = .shape(e)
-            case .path(var e):  e.isVisible = newValue; self = .path(e)
-            case .image(var e): e.isVisible = newValue; self = .image(e)
-            case .text(var e):  e.isVisible = newValue; self = .text(e)
+            case .shape(var e):      e.isVisible = newValue; self = .shape(e)
+            case .path(var e):       e.isVisible = newValue; self = .path(e)
+            case .image(var e):      e.isVisible = newValue; self = .image(e)
+            case .text(var e):       e.isVisible = newValue; self = .text(e)
+            case .background(var e): e.isVisible = newValue; self = .background(e)
             }
         }
     }
 
     var frame: CGRect {
         switch self {
-        case .shape(let e): e.frame
-        case .path(let e):  e.frame
-        case .image(let e): e.frame
-        case .text(let e):  e.frame
+        case .shape(let e):  e.frame
+        case .path(let e):   e.frame
+        case .image(let e):  e.frame
+        case .text(let e):   e.frame
+        case .background:    .zero
         }
     }
 
     var opacity: Double {
         get {
             switch self {
-            case .shape(let e): e.opacity
-            case .path(let e):  e.opacity
-            case .image(let e): e.opacity
-            case .text(let e):  e.opacity
+            case .shape(let e):      e.opacity
+            case .path(let e):       e.opacity
+            case .image(let e):      e.opacity
+            case .text(let e):       e.opacity
+            case .background(let e): e.opacity
             }
         }
         set {
             switch self {
-            case .shape(var e): e.opacity = newValue; self = .shape(e)
-            case .path(var e):  e.opacity = newValue; self = .path(e)
-            case .image(var e): e.opacity = newValue; self = .image(e)
-            case .text(var e):  e.opacity = newValue; self = .text(e)
+            case .shape(var e):      e.opacity = newValue; self = .shape(e)
+            case .path(var e):       e.opacity = newValue; self = .path(e)
+            case .image(var e):      e.opacity = newValue; self = .image(e)
+            case .text(var e):       e.opacity = newValue; self = .text(e)
+            case .background(var e): e.opacity = newValue; self = .background(e)
             }
         }
     }
@@ -232,18 +274,20 @@ nonisolated enum CanvasElement: Identifiable {
     var rotation: Double {
         get {
             switch self {
-            case .shape(let e): e.rotation
-            case .path(let e):  e.rotation
-            case .image(let e): e.rotation
-            case .text(let e):  e.rotation
+            case .shape(let e):  e.rotation
+            case .path(let e):   e.rotation
+            case .image(let e):  e.rotation
+            case .text(let e):   e.rotation
+            case .background:    0
             }
         }
         set {
             switch self {
-            case .shape(var e): e.rotation = newValue; self = .shape(e)
-            case .path(var e):  e.rotation = newValue; self = .path(e)
-            case .image(var e): e.rotation = newValue; self = .image(e)
-            case .text(var e):  e.rotation = newValue; self = .text(e)
+            case .shape(var e):  e.rotation = newValue; self = .shape(e)
+            case .path(var e):   e.rotation = newValue; self = .path(e)
+            case .image(var e):  e.rotation = newValue; self = .image(e)
+            case .text(var e):   e.rotation = newValue; self = .text(e)
+            case .background:    break  // background has no rotation
             }
         }
     }
@@ -251,18 +295,20 @@ nonisolated enum CanvasElement: Identifiable {
     var shadow: ShadowConfig? {
         get {
             switch self {
-            case .shape(let e): e.shadow
-            case .path(let e):  e.shadow
-            case .image(let e): e.shadow
-            case .text(let e):  e.shadow
+            case .shape(let e):  e.shadow
+            case .path(let e):   e.shadow
+            case .image(let e):  e.shadow
+            case .text(let e):   e.shadow
+            case .background:    nil
             }
         }
         set {
             switch self {
-            case .shape(var e): e.shadow = newValue; self = .shape(e)
-            case .path(var e):  e.shadow = newValue; self = .path(e)
-            case .image(var e): e.shadow = newValue; self = .image(e)
-            case .text(var e):  e.shadow = newValue; self = .text(e)
+            case .shape(var e):  e.shadow = newValue; self = .shape(e)
+            case .path(var e):   e.shadow = newValue; self = .path(e)
+            case .image(var e):  e.shadow = newValue; self = .image(e)
+            case .text(var e):   e.shadow = newValue; self = .text(e)
+            case .background:    break  // no shadow for background
             }
         }
     }
@@ -270,11 +316,14 @@ nonisolated enum CanvasElement: Identifiable {
     // MARK: - Rotation-aware hit testing
 
     func containsPoint(_ point: CGPoint, tolerance: CGFloat = 4) -> Bool {
-        let center = CGPoint(x: frame.midX, y: frame.midY)
-        let local  = rotated(CGPoint(x: point.x - center.x, y: point.y - center.y),
-                             by: -rotation)
-        return abs(local.x) <= frame.width  / 2 + tolerance
-            && abs(local.y) <= frame.height / 2 + tolerance
+        guard case .background = self else {
+            let center = CGPoint(x: frame.midX, y: frame.midY)
+            let local  = rotated(CGPoint(x: point.x - center.x, y: point.y - center.y),
+                                 by: -rotation)
+            return abs(local.x) <= frame.width  / 2 + tolerance
+                && abs(local.y) <= frame.height / 2 + tolerance
+        }
+        return false  // Background is only selectable via the layers panel
     }
 
     // MARK: - Duplication (new UUID, offset position)
@@ -315,6 +364,8 @@ nonisolated enum CanvasElement: Identifiable {
             copy.name = e.name + " Copy"
             copy.frame = e.frame.offsetBy(dx: offset, dy: offset)
             return .text(copy)
+        case .background:
+            return self  // Background is unique, not duplicated
         }
     }
 

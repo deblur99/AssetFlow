@@ -10,7 +10,6 @@ struct MinimapView: View {
     @Binding var canvasOffset: CGSize
     let viewportSize: CGSize
     let elements: [CanvasElement]
-    let backgroundColor: Color
 
     // Fixed display width; height is derived from canvas aspect ratio.
     private let displayWidth: CGFloat = 160
@@ -58,11 +57,8 @@ struct MinimapView: View {
             Rectangle()
                 .fill(Color(nsColor: .underPageBackgroundColor))
 
-            // Canvas content (background color + elements)
+            // Canvas content (elements including background)
             Canvas { ctx, _ in
-                ctx.fill(Path(CGRect(origin: .zero,
-                                     size: CGSize(width: displayWidth, height: displayHeight))),
-                         with: .color(backgroundColor))
                 for element in elements where element.isVisible {
                     renderElement(element, in: &ctx, scale: scale)
                 }
@@ -252,6 +248,41 @@ struct MinimapView: View {
                 applyRotation(to: &inner, center: center, degrees: textEl.rotation)
                 inner.opacity = textEl.opacity
                 inner.draw(Image(nsImage: img), in: rect)
+            }
+
+        case .background(let bg):
+            let rect = CGRect(origin: .zero,
+                              size: CGSize(width: displayWidth, height: displayHeight))
+            ctx.drawLayer { inner in
+                inner.opacity = bg.opacity
+                if let grad = bg.gradient {
+                    let sorted = grad.stops.sorted { $0.location < $1.location }
+                    let gradient = Gradient(stops: sorted.map {
+                        Gradient.Stop(color: $0.color, location: $0.location)
+                    })
+                    switch grad.type {
+                    case .linear:
+                        let r = CGFloat(grad.angle * .pi / 180)
+                        let start = CGPoint(x: rect.midX - sin(r) * rect.width  * 0.5,
+                                            y: rect.midY - cos(r) * rect.height * 0.5)
+                        let end   = CGPoint(x: rect.midX + sin(r) * rect.width  * 0.5,
+                                            y: rect.midY + cos(r) * rect.height * 0.5)
+                        inner.fill(Path(rect), with: .linearGradient(gradient,
+                                                                      startPoint: start,
+                                                                      endPoint: end))
+                    case .radial:
+                        let radius = hypot(rect.width, rect.height) * 0.5
+                        inner.fill(Path(rect), with: .radialGradient(gradient,
+                                                                      center: CGPoint(x: rect.midX, y: rect.midY),
+                                                                      startRadius: 0,
+                                                                      endRadius: radius))
+                    case .angular:
+                        inner.fill(Path(rect), with: .conicGradient(gradient,
+                                                                     center: CGPoint(x: rect.midX, y: rect.midY)))
+                    }
+                } else {
+                    inner.fill(Path(rect), with: .color(bg.fillColor))
+                }
             }
         }
     }

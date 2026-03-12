@@ -90,7 +90,7 @@ final class IconDesignViewModel {
     // MARK: - Current style
 
     var fillColor: Color = .init(red: 0.20, green: 0.47, blue: 0.95)
-    var strokeColor: Color = .clear
+    var strokeColor: Color = .white
     var lineWidth: CGFloat = 2
     var cornerRadii: CornerRadii = CornerRadii()
     var currentOpacity: Double = 1.0
@@ -177,6 +177,7 @@ final class IconDesignViewModel {
         case .path(var e):  e.name = trimmed; project.elements[idx] = .path(e)
         case .image(var e): e.name = trimmed; project.elements[idx] = .image(e)
         case .text(var e):  e.name = trimmed; project.elements[idx] = .text(e)
+        case .background:   break  // Background name is fixed
         }
         project.updatedAt = Date()
     }
@@ -231,7 +232,8 @@ final class IconDesignViewModel {
         return abs(dy * p.x - dx * p.y + b.x * a.y - b.y * a.x) / len
     }
 
-    private func simplifyPath(_ points: [CGPoint], epsilon: CGFloat = 1.5) -> [CGPoint] {
+//    private func simplifyPath(_ points: [CGPoint], epsilon: CGFloat = 1.5) -> [CGPoint] {
+    private func simplifyPath(_ points: [CGPoint], epsilon: CGFloat = 2.0) -> [CGPoint] {
         guard points.count > 2 else { return points }
         var maxDist: CGFloat = 0
         var maxIdx = 0
@@ -296,6 +298,8 @@ final class IconDesignViewModel {
                 if let v = opacity { e.opacity = v }
                 project.elements[idx] = .text(e)
                 changed = true
+            case .background:
+                break  // Background updated via updateBackground* methods
             }
         }
         if changed { project.updatedAt = Date() }
@@ -307,6 +311,37 @@ final class IconDesignViewModel {
             guard let idx = project.elements.firstIndex(where: { $0.id == id }) else { continue }
             project.elements[idx].shadow = config
         }
+        project.updatedAt = Date()
+    }
+
+    // MARK: - Background update
+
+    var backgroundElement: BackgroundElement? {
+        guard let first = project.elements.first, case .background(let bg) = first else { return nil }
+        return bg
+    }
+
+    func updateBackgroundFillColor(_ color: Color) {
+        guard let idx = project.elements.firstIndex(where: { if case .background = $0 { return true }; return false }),
+              case .background(var bg) = project.elements[idx] else { return }
+        bg.fillColor = color
+        project.elements[idx] = .background(bg)
+        project.updatedAt = Date()
+    }
+
+    func updateBackgroundGradient(_ gradient: GradientConfig?) {
+        guard let idx = project.elements.firstIndex(where: { if case .background = $0 { return true }; return false }),
+              case .background(var bg) = project.elements[idx] else { return }
+        bg.gradient = gradient
+        project.elements[idx] = .background(bg)
+        project.updatedAt = Date()
+    }
+
+    func updateBackgroundOpacity(_ opacity: Double) {
+        guard let idx = project.elements.firstIndex(where: { if case .background = $0 { return true }; return false }),
+              case .background(var bg) = project.elements[idx] else { return }
+        bg.opacity = opacity
+        project.elements[idx] = .background(bg)
         project.updatedAt = Date()
     }
 }
@@ -460,6 +495,8 @@ extension IconDesignViewModel {
             e.frame = CGRect(origin: newFrame.origin,
                              size: CGSize(width: newFrame.width, height: measured.height))
             project.elements[idx] = .text(e)
+        case .background:
+            break  // Background covers the full canvas; frame is not user-resizable
         }
         project.updatedAt = Date()
     }
@@ -651,9 +688,12 @@ extension IconDesignViewModel {
     }
 
     func deleteSelectedElements() {
-        guard !selectedElementIds.isEmpty else { return }
+        let idsToDelete = selectedElementIds.filter { id in
+            !(backgroundElement?.id == id)
+        }
+        guard !idsToDelete.isEmpty else { return }
         checkpoint()
-        for id in selectedElementIds { project.removeElement(id: id) }
+        for id in idsToDelete { project.removeElement(id: id) }
         selectedElementIds = []
     }
 
@@ -662,6 +702,7 @@ extension IconDesignViewModel {
     }
 
     func deleteElement(id: UUID) {
+        guard backgroundElement?.id != id else { return }
         checkpoint()
         selectedElementIds.remove(id)
         project.removeElement(id: id)
@@ -679,21 +720,24 @@ extension IconDesignViewModel {
 
     func bringForward(id: UUID) {
         guard let idx = project.elements.firstIndex(where: { $0.id == id }),
-              idx < project.elements.count - 1 else { return }
+              idx < project.elements.count - 1,
+              !isBackgroundId(id) else { return }
         checkpoint()
         project.swapElements(at: idx, idx + 1)
     }
 
     func sendBackward(id: UUID) {
         guard let idx = project.elements.firstIndex(where: { $0.id == id }),
-              idx > 0 else { return }
+              idx > lowestMovableIndex,
+              !isBackgroundId(id) else { return }
         checkpoint()
         project.swapElements(at: idx, idx - 1)
     }
 
     func bringToFront(id: UUID) {
         guard let idx = project.elements.firstIndex(where: { $0.id == id }),
-              idx < project.elements.count - 1 else { return }
+              idx < project.elements.count - 1,
+              !isBackgroundId(id) else { return }
         checkpoint()
         let el = project.elements.remove(at: idx)
         project.elements.append(el)
@@ -701,11 +745,15 @@ extension IconDesignViewModel {
 
     func sendToBack(id: UUID) {
         guard let idx = project.elements.firstIndex(where: { $0.id == id }),
-              idx > 0 else { return }
+              idx > lowestMovableIndex,
+              !isBackgroundId(id) else { return }
         checkpoint()
         let el = project.elements.remove(at: idx)
-        project.elements.insert(el, at: 0)
+        project.elements.insert(el, at: lowestMovableIndex)
     }
+
+    private var lowestMovableIndex: Int { backgroundElement != nil ? 1 : 0 }
+    private func isBackgroundId(_ id: UUID) -> Bool { backgroundElement?.id == id }
 }
 
 // MARK: - Image import
