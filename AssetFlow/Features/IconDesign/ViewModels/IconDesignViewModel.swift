@@ -15,12 +15,13 @@ enum ActiveTransform {
 @Observable
 @MainActor
 final class IconDesignViewModel {
-
     // MARK: - Project
+
     var project = IconProject()
 
     // MARK: - Tool state
-    var selectedToolId: String? = nil
+
+    var selectedToolId: String?
     var selectedTool: DrawingTool {
         get {
             guard let selectedToolId else { return .move }
@@ -29,8 +30,18 @@ final class IconDesignViewModel {
             selectedToolId = newValue.id
         }
     }
-    
-    var hoveredToolId: String? = nil
+
+    /// 도형 생성 후 select로 자동 전환될 때 복원용으로 저장되는 이전 그리기 도구.
+    /// 사용자가 직접 도구를 선택하면 nil로 초기화.
+    var previousDrawingTool: DrawingTool?
+
+    /// 사용자가 직접 도구를 선택할 때 호출. previousDrawingTool을 초기화한다.
+    func selectTool(_ tool: DrawingTool) {
+        previousDrawingTool = nil
+        selectedTool = tool
+    }
+
+    var hoveredToolId: String?
     var hoveredTool: DrawingTool? {
         get {
             guard let hoveredToolId else { return nil }
@@ -39,7 +50,22 @@ final class IconDesignViewModel {
             hoveredToolId = newValue?.id
         }
     }
-    
+
+    var enabledToolIds: Set<String> = []
+
+    func toggleEnabledToolId(_ tool: any ToolItem) {
+        if !enabledToolIds.contains(tool.id) {
+            enabledToolIds.insert(tool.id)
+        } else {
+            enabledToolIds.remove(tool.id)
+        }
+
+        // 격자 토글 여부도 같이 관리
+        if let tool = tool as? DrawingExtraTool, tool == .showGrid {
+            isGridEnabled = enabledToolIds.contains(tool.id)
+        }
+    }
+
     /// 다중 선택된 요소 ID 집합. 단일 선택 시에도 여기에 1개 들어간다.
     var selectedElementIds: Set<UUID> = []
 
@@ -49,24 +75,28 @@ final class IconDesignViewModel {
     }
 
     // MARK: - Active drawing (in-progress, not yet committed)
+
     var activePathPoints: [CGPoint] = []
     var activeDragStart: CGPoint?
     var activeDragCurrent: CGPoint?
 
     // MARK: - Active transform session
+
     var activeTransform: ActiveTransform?
 
     /// 직전에 드래그로 생성된 요소 ID. 생성 직후 드래그로 위치 조정 허용에 사용.
     var justCreatedElementId: UUID?
 
     // MARK: - Current style
-    var fillColor: Color   = Color(red: 0.20, green: 0.47, blue: 0.95)
+
+    var fillColor: Color = .init(red: 0.20, green: 0.47, blue: 0.95)
     var strokeColor: Color = .clear
     var lineWidth: CGFloat = 2
-    var cornerRadius: CGFloat = 0
+    var cornerRadii: CornerRadii = CornerRadii()
     var currentOpacity: Double = 1.0
 
     // MARK: - Text style defaults
+
     var textFontName: String = "Helvetica"
     var textFontSize: CGFloat = 100
     var textIsBold: Bool = false
@@ -75,34 +105,38 @@ final class IconDesignViewModel {
     var textAlignment: TextAlignmentOption = .left
 
     // MARK: - Text editing state
+
     /// 현재 인라인 편집기가 열려 있는 텍스트 요소 ID. nil이면 편집기가 닫혀 있음.
-    var editingTextElementId: UUID? = nil
+    var editingTextElementId: UUID?
 
     // MARK: - Viewport
+
     var zoom: CGFloat = 1.0
     var canvasOffset: CGSize = .zero
 
     // MARK: - Undo / Redo
+
     private var undoStack: [[CanvasElement]] = []
     private var redoStack: [[CanvasElement]] = []
     private let maxUndoCount = 50
-    
+
     // MARK: - Zoom Threshold
+
     private let maxZoomRatio = 10.0 // 1000%
     private let minZoomRatio = 0.05 // 5%
     static let zoomPickerLevels: [CGFloat] = [
         8.0, 4.0, 2.0, 1.5, 1.0, 0.8, 0.7, 0.6, 0.5, 0.4, 0.3, 0.2, 0.1
     ]
-    
+
     // MARK: - Tip banner
-    
+
     var isTipBannerPresented = false
 
     // MARK: - Grid
 
     static let gridSize: CGFloat = 41.0
     var isGridEnabled = true // 초기 상태는 격자 표시 ON
-    
+
     // MARK: - Computed helpers
 
     var elements: [CanvasElement] { project.elements }
@@ -115,23 +149,117 @@ final class IconDesignViewModel {
     var canUndo: Bool { !undoStack.isEmpty }
     var canRedo: Bool { !redoStack.isEmpty }
     
+    // MARK: - Clipboard
+
+    var clipboard: CanvasElement?
+
     // MARK: - Initialization
-    
+
     func initViewModel() {
         // TODO: 임시 처리: 이후 툴팁 언제 띄울지 결정되면 코드 수정
         isTipBannerPresented = true
     }
-    
-    
+
     // MARK: - Edit Metadata
-    
+
     func renameProject(_ newName: String) {
         project.name = newName
         project.updatedAt = Date()
     }
 
-    // MARK: - Drawing gestures
+    func renameElement(id: UUID, name: String) {
+        let trimmed = name.trimmingCharacters(in: .whitespaces)
+        guard !trimmed.isEmpty,
+              let idx = project.elements.firstIndex(where: { $0.id == id }) else { return }
+        switch project.elements[idx] {
+        case .shape(var e): e.name = trimmed; project.elements[idx] = .shape(e)
+        case .path(var e):  e.name = trimmed; project.elements[idx] = .path(e)
+        case .image(var e): e.name = trimmed; project.elements[idx] = .image(e)
+        case .text(var e):  e.name = trimmed; project.elements[idx] = .text(e)
+        }
+        project.updatedAt = Date()
+    }
 
+    // MARK: - Zoom
+
+    func zoomIn() { zoom = min(zoom * 1.25, maxZoomRatio) }
+    func zoomOut() { zoom = max(zoom / 1.25, minZoomRatio) }
+    func resetZoom() { zoom = 1.0 }
+
+    func zoomToFit(in viewportSize: CGSize) {
+        let padding: CGFloat = 40
+        let availableWidth = viewportSize.width - padding * 2
+        let availableHeight = viewportSize.height - padding * 2
+        guard availableWidth > 0, availableHeight > 0 else { return }
+        let fitZoom = min(availableWidth / project.canvasSize.width,
+                          availableHeight / project.canvasSize.height)
+        zoom = max(0.05, min(fitZoom, 1.0))
+    }
+
+    // MARK: - Undo / Redo
+
+    func undo() {
+        guard let prev = undoStack.popLast() else { return }
+        redoStack.append(project.elements)
+        project.elements = prev
+        selectedElementIds = []
+    }
+
+    func redo() {
+        guard let next = redoStack.popLast() else { return }
+        undoStack.append(project.elements)
+        project.elements = next
+    }
+
+
+    // MARK: - Element style editing
+
+    func updateSelectedStyle(
+        fillColor: Color? = nil,
+        strokeColor: Color? = nil,
+        strokeWidth: CGFloat? = nil,
+        cornerRadius: CGFloat? = nil,
+        cornerRadii: CornerRadii? = nil,
+        opacity: Double? = nil
+    ) {
+        guard !selectedElementIds.isEmpty else { return }
+        var changed = false
+        for id in selectedElementIds {
+            guard let idx = project.elements.firstIndex(where: { $0.id == id }) else { continue }
+            switch project.elements[idx] {
+            case .shape(var e):
+                if let v = fillColor    { e.fillColor = v }
+                if let v = strokeColor  { e.strokeColor = v }
+                if let v = strokeWidth  { e.strokeWidth = v }
+                if let v = cornerRadius { e.cornerRadii = CornerRadii(v) }
+                if let v = cornerRadii  { e.cornerRadii = v }
+                if let v = opacity      { e.opacity = v }
+                project.elements[idx] = .shape(e)
+                changed = true
+            case .path(var e):
+                if let v = fillColor   { e.color = v }
+                if let v = strokeColor { e.color = v }
+                if let v = strokeWidth { e.lineWidth = v }
+                if let v = opacity     { e.opacity = v }
+                project.elements[idx] = .path(e)
+                changed = true
+            case .image(var e):
+                if let v = opacity { e.opacity = v }
+                project.elements[idx] = .image(e)
+                changed = true
+            case .text(var e):
+                if let v = opacity { e.opacity = v }
+                project.elements[idx] = .text(e)
+                changed = true
+            }
+        }
+        if changed { project.updatedAt = Date() }
+    }
+}
+
+// MARK: - Drawing gestures
+
+extension IconDesignViewModel {
     func handleDragChanged(at point: CGPoint) {
         switch selectedTool {
         case .pen:
@@ -145,7 +273,7 @@ final class IconDesignViewModel {
         case .rectangle, .ellipse:
             if activeDragStart == nil {
                 checkpoint()
-                justCreatedElementId = nil  // 새 도형 그리기 시작 시 플래그 소거
+                justCreatedElementId = nil // 새 도형 그리기 시작 시 플래그 소거
                 activeDragStart = point
             }
             activeDragCurrent = point
@@ -160,7 +288,7 @@ final class IconDesignViewModel {
         case .pen:
             guard activePathPoints.count > 1 else {
                 activePathPoints = []
-                handleTap(at: point)  // 탭: 다른 도구와 동일하게 선택/해제 처리
+                handleTap(at: point) // 탭: 다른 도구와 동일하게 선택/해제 처리
                 return
             }
             let pathEl = PathElement(
@@ -192,7 +320,7 @@ final class IconDesignViewModel {
                 fillColor: fillColor,
                 strokeColor: strokeColor,
                 strokeWidth: strokeColor == .clear ? 0 : lineWidth,
-                cornerRadius: cornerRadius
+                cornerRadii: cornerRadii
             )
             shapeEl.opacity = currentOpacity
             project.addElement(.shape(shapeEl))
@@ -201,6 +329,7 @@ final class IconDesignViewModel {
                 selectedElementIds = [id]
                 justCreatedElementId = id
             }
+            previousDrawingTool = selectedTool // 자동 전환 전 도구 기억
             selectedTool = .select
 
         case .move, .select, .text:
@@ -224,40 +353,11 @@ final class IconDesignViewModel {
         }.map(\.id)
         selectedElementIds = Set(ids)
     }
+}
 
-    // MARK: - Zoom
+// MARK: - Transform: public entry points
 
-    func zoomIn()    { zoom = min(zoom * 1.25, maxZoomRatio) }
-    func zoomOut()   { zoom = max(zoom / 1.25, minZoomRatio) }
-    func resetZoom() { zoom = 1.0 }
-
-    func zoomToFit(in viewportSize: CGSize) {
-        let padding: CGFloat = 40
-        let availableWidth  = viewportSize.width  - padding * 2
-        let availableHeight = viewportSize.height - padding * 2
-        guard availableWidth > 0, availableHeight > 0 else { return }
-        let fitZoom = min(availableWidth  / project.canvasSize.width,
-                          availableHeight / project.canvasSize.height)
-        zoom = max(0.05, min(fitZoom, 1.0))
-    }
-
-    // MARK: - Undo / Redo
-
-    func undo() {
-        guard let prev = undoStack.popLast() else { return }
-        redoStack.append(project.elements)
-        project.elements = prev
-        selectedElementIds = []
-    }
-
-    func redo() {
-        guard let next = redoStack.popLast() else { return }
-        undoStack.append(project.elements)
-        project.elements = next
-    }
-
-    // MARK: - Transform: public entry points
-
+extension IconDesignViewModel {
     func beginTransform() {
         checkpoint()
     }
@@ -276,13 +376,14 @@ final class IconDesignViewModel {
             let oldFrame = e.frame
             let dx = newFrame.minX - oldFrame.minX
             let dy = newFrame.minY - oldFrame.minY
-            let scaleX = oldFrame.width  > 0 ? newFrame.width  / oldFrame.width  : 1
+            let scaleX = oldFrame.width > 0 ? newFrame.width / oldFrame.width : 1
             let scaleY = oldFrame.height > 0 ? newFrame.height / oldFrame.height : 1
             e.points = e.points.map { pt in
                 // bounding box 원점 기준으로 스케일 후 새 원점으로 이동
                 CGPoint(
                     x: newFrame.minX + (pt.x - oldFrame.minX) * scaleX,
-                    y: newFrame.minY + (pt.y - oldFrame.minY) * scaleY)
+                    y: newFrame.minY + (pt.y - oldFrame.minY) * scaleY
+                )
             }
             project.elements[idx] = .path(e)
         case .text(var e):
@@ -296,12 +397,14 @@ final class IconDesignViewModel {
             // fontSize 변경 후 실제 렌더 크기를 측정해 frame 보정
             let measured = Self.measuredTextSize(
                 text: e.text, fontName: e.fontName, fontSize: e.fontSize,
-                isBold: e.isBold, isItalic: e.isItalic)
+                isBold: e.isBold, isItalic: e.isItalic
+            )
             e.frame = CGRect(origin: newFrame.origin, size: measured)
             project.elements[idx] = .text(e)
         }
         project.updatedAt = Date()
     }
+
     func setElementRotation(id: UUID, rotation: Double) {
         guard let idx = project.elements.firstIndex(where: { $0.id == id }) else { return }
         project.elements[idx].rotation = rotation
@@ -310,61 +413,29 @@ final class IconDesignViewModel {
 
     /// Batch-update any combination of transform properties.
     func setElementTransform(id: UUID,
-                              x: CGFloat?    = nil,
-                              y: CGFloat?    = nil,
-                              width: CGFloat? = nil,
-                              height: CGFloat? = nil,
-                              rotation: Double? = nil) {
+                             x: CGFloat? = nil,
+                             y: CGFloat? = nil,
+                             width: CGFloat? = nil,
+                             height: CGFloat? = nil,
+                             rotation: Double? = nil)
+    {
         guard let idx = project.elements.firstIndex(where: { $0.id == id }) else { return }
         let old = project.elements[idx].frame
         let newFrame = CGRect(
-            x:      x      ?? old.minX,
-            y:      y      ?? old.minY,
-            width:  max(1, width  ?? old.width),
+            x: x ?? old.minX,
+            y: y ?? old.minY,
+            width: max(1, width ?? old.width),
             height: max(1, height ?? old.height)
         )
         checkpoint()
         setElementFrame(id: id, frame: newFrame)
         if let r = rotation { setElementRotation(id: id, rotation: r) }
     }
+}
 
-    // MARK: - Element style editing
+// MARK: - Text element management
 
-    func updateSelectedStyle(
-        fillColor:    Color?   = nil,
-        strokeColor:  Color?   = nil,
-        strokeWidth:  CGFloat? = nil,
-        cornerRadius: CGFloat? = nil,
-        opacity:      Double?  = nil
-    ) {
-        guard let id = selectedElementId,
-              let idx = project.elements.firstIndex(where: { $0.id == id }) else { return }
-        switch project.elements[idx] {
-        case .shape(var e):
-            if let v = fillColor    { e.fillColor    = v }
-            if let v = strokeColor  { e.strokeColor  = v }
-            if let v = strokeWidth  { e.strokeWidth  = v }
-            if let v = cornerRadius { e.cornerRadius = v }
-            if let v = opacity      { e.opacity      = v }
-            project.elements[idx] = .shape(e)
-        case .path(var e):
-            if let v = fillColor   { e.color     = v }
-            if let v = strokeColor { e.color     = v }
-            if let v = strokeWidth { e.lineWidth = v }
-            if let v = opacity     { e.opacity   = v }
-            project.elements[idx] = .path(e)
-        case .image(var e):
-            if let v = opacity { e.opacity = v }
-            project.elements[idx] = .image(e)
-        case .text(var e):
-            if let v = opacity { e.opacity = v }
-            project.elements[idx] = .text(e)
-        }
-        project.updatedAt = Date()
-    }
-
-    // MARK: - Text element management
-
+extension IconDesignViewModel {
     func createTextElement(at point: CGPoint) {
         checkpoint()
         // 초기 높이: 정확한 폰트 메트릭으로 한 줄 높이
@@ -384,7 +455,8 @@ final class IconDesignViewModel {
             isBold: textIsBold,
             isItalic: textIsItalic,
             textColor: textColor,
-            alignment: textAlignment)
+            alignment: textAlignment
+        )
         project.addElement(.text(el))
         if let id = project.elements.last?.id {
             selectedElementIds = [id]
@@ -411,7 +483,8 @@ final class IconDesignViewModel {
         // 빈 텍스트 요소는 자동 삭제
         if let id = editingTextElementId,
            let el = project.elements.first(where: { $0.id == id }),
-           case .text(let t) = el, t.text.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty {
+           case .text(let t) = el, t.text.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty
+        {
             deleteElement(id: id)
         }
         editingTextElementId = nil
@@ -429,11 +502,11 @@ final class IconDesignViewModel {
 
     /// 선택된 모든 텍스트 요소의 타이포그래피 속성을 일괄 업데이트한다.
     func updateSelectedTextStyle(
-        fontName:  String?              = nil,
-        fontSize:  CGFloat?             = nil,
-        isBold:    Bool?                = nil,
-        isItalic:  Bool?                = nil,
-        textColor: Color?               = nil,
+        fontName: String? = nil,
+        fontSize: CGFloat? = nil,
+        isBold: Bool? = nil,
+        isItalic: Bool? = nil,
+        textColor: Color? = nil,
         alignment: TextAlignmentOption? = nil
     ) {
         checkpoint()
@@ -442,10 +515,10 @@ final class IconDesignViewModel {
             guard let idx = project.elements.firstIndex(where: { $0.id == id }),
                   case .text(var e) = project.elements[idx] else { continue }
             e.show()
-            if let v = fontName  { e.fontName  = v }
-            if let v = fontSize  { e.fontSize  = v }
-            if let v = isBold    { e.isBold    = v }
-            if let v = isItalic  { e.isItalic  = v }
+            if let v = fontName { e.fontName = v }
+            if let v = fontSize { e.fontSize = v }
+            if let v = isBold { e.isBold = v }
+            if let v = isItalic { e.isItalic = v }
             if let v = textColor { e.textColor = v }
             if let v = alignment { e.alignment = v }
             e.show()
@@ -453,16 +526,17 @@ final class IconDesignViewModel {
             if affectsLayout {
                 let newSize = Self.measuredTextSize(
                     text: e.text, fontName: e.fontName, fontSize: e.fontSize,
-                    isBold: e.isBold, isItalic: e.isItalic)
+                    isBold: e.isBold, isItalic: e.isItalic
+                )
                 e.frame = CGRect(origin: e.frame.origin, size: newSize)
             }
             project.elements[idx] = .text(e)
         }
         // 기본값도 함께 업데이트
-        if let v = fontName  { textFontName  = v }
-        if let v = fontSize  { textFontSize  = v }
-        if let v = isBold    { textIsBold    = v }
-        if let v = isItalic  { textIsItalic  = v }
+        if let v = fontName { textFontName = v }
+        if let v = fontSize { textFontSize = v }
+        if let v = isBold { textIsBold = v }
+        if let v = isItalic { textIsItalic = v }
         if let v = textColor { self.textColor = v }
         if let v = alignment { textAlignment = v }
         project.updatedAt = Date()
@@ -471,9 +545,10 @@ final class IconDesignViewModel {
     /// NSLayoutManager를 사용해 텍스트의 실제 렌더링 크기를 측정한다.
     /// InlineTextEditorView의 reportSize() 및 캔버스 렌더링과 동일한 파이프라인 사용.
     static func measuredTextSize(text: String, fontName: String, fontSize: CGFloat,
-                                  isBold: Bool, isItalic: Bool) -> CGSize {
+                                 isBold: Bool, isItalic: Bool) -> CGSize
+    {
         var font = NSFont(name: fontName, size: fontSize) ?? NSFont.systemFont(ofSize: fontSize)
-        if isBold   { font = NSFontManager.shared.convert(font, toHaveTrait: .boldFontMask)   }
+        if isBold { font = NSFontManager.shared.convert(font, toHaveTrait: .boldFontMask) }
         if isItalic { font = NSFontManager.shared.convert(font, toHaveTrait: .italicFontMask) }
 
         if text.isEmpty {
@@ -483,18 +558,20 @@ final class IconDesignViewModel {
         let ts = NSTextStorage(string: text, attributes: [.font: font])
         let lm = NSLayoutManager()
         let tc = NSTextContainer(containerSize: CGSize(
-            width:  CGFloat.greatestFiniteMagnitude,
-            height: CGFloat.greatestFiniteMagnitude))
+            width: CGFloat.greatestFiniteMagnitude,
+            height: CGFloat.greatestFiniteMagnitude
+        ))
         ts.addLayoutManager(lm)
         lm.addTextContainer(tc)
         lm.ensureLayout(for: tc)
         let used = lm.usedRect(for: tc)
         return CGSize(width: ceil(used.maxX), height: ceil(used.maxY))
     }
+}
 
-    // MARK: - Clipboard
-    var clipboard: CanvasElement?
+// MARK: - Clipboard
 
+extension IconDesignViewModel {
     func copySelectedElement() {
         clipboard = selectedElement
     }
@@ -567,9 +644,11 @@ final class IconDesignViewModel {
         let el = project.elements.remove(at: idx)
         project.elements.insert(el, at: 0)
     }
+}
 
-    // MARK: - Image import
+// MARK: - Image import
 
+extension IconDesignViewModel {
     func importImage() {
         let panel = NSOpenPanel()
         panel.allowedContentTypes = [.png, .jpeg, .gif, .tiff, .bmp, .heic]
@@ -585,7 +664,7 @@ final class IconDesignViewModel {
         let scale = min(maxDim / max(size.width, size.height), 1.0)
         let scaled = CGSize(width: size.width * scale, height: size.height * scale)
         let origin = CGPoint(
-            x: (project.canvasSize.width  - scaled.width)  / 2,
+            x: (project.canvasSize.width - scaled.width) / 2,
             y: (project.canvasSize.height - scaled.height) / 2
         )
         let imgEl = ImageElement(
@@ -597,9 +676,11 @@ final class IconDesignViewModel {
         project.addElement(.image(imgEl))
         if let id = project.elements.last?.id { selectedElementIds = [id] }
     }
+}
 
-    // MARK: - Private helpers
+// MARK: - Private helpers
 
+extension IconDesignViewModel {
     func checkpoint() {
         undoStack.append(project.elements)
         if undoStack.count > maxUndoCount { undoStack.removeFirst() }
@@ -607,7 +688,7 @@ final class IconDesignViewModel {
     }
 
     private func resetActiveDrawing() {
-        activeDragStart   = nil
+        activeDragStart = nil
         activeDragCurrent = nil
     }
 

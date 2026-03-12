@@ -11,9 +11,10 @@ struct CanvasToolbarView: View {
                 ToolButton(
                     tool: tool,
                     selectedToolId: $vm.selectedToolId,
-                    hoveredToolId: $vm.hoveredToolId
+                    hoveredToolId: $vm.hoveredToolId,
+                    enabledToolIds: $vm.enabledToolIds
                 ) { tool in
-                    vm.selectedTool = tool
+                    vm.selectTool(tool)
                 }
             }
 
@@ -23,39 +24,26 @@ struct CanvasToolbarView: View {
             ForEach(DrawingExtraTool.allCases) { tool in
                 ToolExtraButton(
                     tool: tool,
-                    hoveredToolId: $vm.hoveredToolId
+                    hoveredToolId: $vm.hoveredToolId,
+                    enabledToolIds: $vm.enabledToolIds
                 ) { tool in
-                    if tool == .imagePicker {
+                    switch tool {
+                    case .imagePicker:
                         vm.importImage()
+                    case .showGrid:
+                        vm.toggleEnabledToolId(tool)
                     }
                 }
             }
             
-            Divider()
-                .padding(.vertical, 4)
-
-            // 격자 토글 (⌘G)
-            Button {
-                vm.isGridEnabled.toggle()
-            } label: {
-                Image(systemName: vm.isGridEnabled ? "grid" : "grid")
-                    .font(.system(size: 14))
-                    .foregroundStyle(vm.isGridEnabled ? Color.accentColor : Color.secondary)
-                    .frame(width: 28, height: 28)
-                    .background(vm.isGridEnabled
-                        ? Color.accentColor.opacity(0.15)
-                        : Color.clear,
-                        in: RoundedRectangle(cornerRadius: 6))
-            }
-            .buttonStyle(.plain)
-            .help("Show Grid — ⌘G")
-
             Spacer()
         }
         .padding(.horizontal, 8)
         .background(Color(nsColor: .controlBackgroundColor))
         .onHover { hover in
-            if !hover {
+            if hover {
+                NSCursor.arrow.set()
+            } else {
                 vm.hoveredTool = nil
             }
         }

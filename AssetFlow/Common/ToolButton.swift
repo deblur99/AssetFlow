@@ -12,12 +12,16 @@ struct ToolButton<T: ToolItem>: View {
     let tool: T
     @Binding var selectedToolId: String?  // ToolButton을 사용하는 뷰에서, 현재 선택된 tool의 ID를 넘겨받음
     @Binding var hoveredToolId: String?  // ToolButton을 사용하는 뷰에서, 현재 마우스 커서가 올라간 tool의 ID를 넘겨받음
+    @Binding var enabledToolIds: Set<String>  // ToolButton을 사용하는 뷰에서, 현재 마우스 커서가 올라간 tool의 ID를 넘겨받음
     var onSelected: ((T) -> Void)? = nil
     
     var body: some View {
         Button { onSelected?(tool) } label: {
             Image(systemName: tool.systemImage)
                 .frame(width: 32, height: 32)
+                .foregroundStyle(
+                    enabledToolIds.contains(tool.id) ? Color.accentColor : Color.secondary
+                )
                 .background(
                     selectedToolId == tool.id
                         ? Color.accentColor.opacity(0.18)  // 현재 선택된 툴
@@ -43,6 +47,7 @@ struct ToolButton<T: ToolItem>: View {
 #Preview {
     @Previewable @State var selectedToolId: String? = nil
     @Previewable @State var hoveredToolId: String? = nil
+    @Previewable @State var enabledToolIds: Set<String> = []
     
     VStack {
         ForEach(DrawingTool.allCases) { tool in
@@ -50,6 +55,7 @@ struct ToolButton<T: ToolItem>: View {
                 tool: tool,
                 selectedToolId: $selectedToolId,
                 hoveredToolId: $hoveredToolId,
+                enabledToolIds: $enabledToolIds,
                 onSelected: { selected in
                     selectedToolId = selected.id
                     print("Selected tool: \(selected)")

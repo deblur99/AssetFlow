@@ -11,12 +11,16 @@ import SwiftUI
 struct ToolExtraButton<T: ToolItem>: View {
     let tool: T
     @Binding var hoveredToolId: String?  // ToolButton을 사용하는 뷰에서, 현재 마우스 커서가 올라간 tool의 ID를 넘겨받음
+    @Binding var enabledToolIds: Set<String>
     var onClicked: (T) -> Void
     
     var body: some View {
         Button { onClicked(tool) } label: {
             Image(systemName: tool.systemImage)
                 .frame(width: 32, height: 32)
+                .foregroundStyle(
+                    enabledToolIds.contains(tool.id) ? Color.accentColor : Color.secondary
+                )
                 .background(
                     hoveredToolId == tool.id    // 마우스 커서가 올라간 툴
                         ? Color.gray.opacity(0.3)
@@ -39,12 +43,14 @@ struct ToolExtraButton<T: ToolItem>: View {
 
 #Preview {
     @Previewable @State var hoveredToolId: String? = nil
+    @Previewable @State var enabledToolIds: Set<String> = []
     
     VStack {
         ForEach(DrawingExtraTool.allCases) { tool in
             ToolExtraButton(
                 tool: tool,
                 hoveredToolId: $hoveredToolId,
+                enabledToolIds: $enabledToolIds,
                 onClicked: { clicked in
                     print("Clicked tool: \(clicked)")
                 }

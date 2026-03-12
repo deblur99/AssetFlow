@@ -45,6 +45,38 @@ nonisolated struct TextElement: Identifiable {
     }
 }
 
+// MARK: - Corner radii
+
+nonisolated struct CornerRadii: Equatable {
+    var topLeft:     CGFloat = 0
+    var topRight:    CGFloat = 0
+    var bottomLeft:  CGFloat = 0
+    var bottomRight: CGFloat = 0
+
+    static let zero = CornerRadii()
+
+    var isUniform: Bool {
+        topLeft == topRight && topLeft == bottomLeft && topLeft == bottomRight
+    }
+    var uniformValue: CGFloat? { isUniform ? topLeft : nil }
+
+    /// 4 개 모두 동일한 값으로 초기화
+    init(_ uniform: CGFloat = 0) {
+        topLeft = uniform; topRight = uniform
+        bottomLeft = uniform; bottomRight = uniform
+    }
+    init(topLeft: CGFloat, topRight: CGFloat, bottomLeft: CGFloat, bottomRight: CGFloat) {
+        self.topLeft = topLeft; self.topRight = topRight
+        self.bottomLeft = bottomLeft; self.bottomRight = bottomRight
+    }
+
+    /// zoom 배율 적용
+    func scaled(by z: CGFloat) -> CornerRadii {
+        CornerRadii(topLeft: topLeft * z, topRight: topRight * z,
+                    bottomLeft: bottomLeft * z, bottomRight: bottomRight * z)
+    }
+}
+
 // MARK: - Leaf element types
 
 nonisolated struct ShapeElement: Identifiable {
@@ -59,7 +91,13 @@ nonisolated struct ShapeElement: Identifiable {
     var fillColor: Color
     var strokeColor: Color
     var strokeWidth: CGFloat
-    var cornerRadius: CGFloat = 0
+    var cornerRadii: CornerRadii = CornerRadii()
+
+    /// 단일 반경 접근 (backward compat / uniform 체크 용도)
+    var cornerRadius: CGFloat {
+        get { cornerRadii.uniformValue ?? 0 }
+        set { cornerRadii = CornerRadii(newValue) }
+    }
 
     nonisolated enum ShapeType { case rectangle, ellipse }
 }
@@ -220,7 +258,7 @@ nonisolated enum CanvasElement: Identifiable {
                 frame: e.frame.offsetBy(dx: offset, dy: offset),
                 shapeType: e.shapeType,
                 fillColor: e.fillColor, strokeColor: e.strokeColor,
-                strokeWidth: e.strokeWidth, cornerRadius: e.cornerRadius)
+                strokeWidth: e.strokeWidth, cornerRadii: e.cornerRadii)
             return .shape(copy)
         case .path(let e):
             let moved = PathElement(

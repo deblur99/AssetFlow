@@ -51,6 +51,7 @@ struct DesignCanvasView: View {
                     hoverState.isHovering = true
                     cursorFor(canvasCoord(from: location, viewSize: geometry.size)).set()
                 case .ended:
+                    print("continuouse hover ended")
                     hoverState.isHovering = false
                     NSCursor.arrow.set()
                 }
@@ -68,12 +69,19 @@ struct DesignCanvasView: View {
                 if let m = magnifyMonitor { NSEvent.removeMonitor(m); magnifyMonitor = nil }
             }
             .onChange(of: geometry.size) { _, s in vm.zoomToFit(in: s) }
+            .onChange(of: vm.selectedTool, { oldValue, newValue in
+                if oldValue == .text && newValue != .text {
+                    vm.endTextEdit() // 텍스트 도구에서 나갈 때 편집 중이던 텍스트 요소 편집 종료
+                }
+            })
             .overlay(alignment: .bottomTrailing) {
                 MinimapView(
                     canvasSize: vm.project.canvasSize,
                     zoom: vm.zoom,
                     canvasOffset: $vm.canvasOffset,
-                    viewportSize: geometry.size)
+                    viewportSize: geometry.size,
+                    elements: vm.elements,
+                    backgroundColor: vm.project.backgroundColor)
                     .padding(12)
             }
         }
@@ -232,7 +240,7 @@ extension DesignCanvasView {
             let rect = scaled(shape.frame, by: z)
             let center = CGPoint(x: rect.midX, y: rect.midY)
             let path = shapePath(type: shape.shapeType, in: rect,
-                                 cornerRadius: shape.cornerRadius * z)
+                                 cornerRadii: shape.cornerRadii.scaled(by: z))
             ctx.drawLayer { inner in
                 applyRotation(to: &inner, center: center, degrees: shape.rotation)
                 inner.opacity = shape.opacity
@@ -322,7 +330,7 @@ extension DesignCanvasView {
         if let start = vm.activeDragStart, let end = vm.activeDragCurrent {
             let rect = scaled(normalizedRect(from: start, to: end), by: z)
             let type: ShapeElement.ShapeType = vm.selectedTool == .rectangle ? .rectangle : .ellipse
-            let path = shapePath(type: type, in: rect, cornerRadius: vm.cornerRadius * z)
+            let path = shapePath(type: type, in: rect, cornerRadii: vm.cornerRadii.scaled(by: z))
             ctx.fill(path, with: .color(vm.fillColor.opacity(0.6)))
             let stroke = vm.strokeColor == .clear ? Color.gray.opacity(0.6) : vm.strokeColor
             ctx.stroke(path, with: .color(stroke), lineWidth: max(1, vm.lineWidth * z))
@@ -603,10 +611,17 @@ extension DesignCanvasView {
                         }
                     }
 
-                    // 5. 선택 모드 + 빈 영역 → 마키 선택 시작
+                    // 5. 선택 모드 + 빈 영역 → 이전 도구 복원 or 마키 선택 시작
                     if vm.selectedTool == .select {
-                        vm.selectedElementIds = []
-                        marqueeRect = CGRect(origin: start, size: .zero)
+                        if let prevTool = vm.previousDrawingTool {
+                            // 이전 그리기 도구로 자동 복원 후 그리기 시작
+                            vm.selectedTool = prevTool
+                            vm.selectedElementIds = []
+                            vm.handleDragChanged(at: pt)
+                        } else {
+                            vm.selectedElementIds = []
+                            marqueeRect = CGRect(origin: start, size: .zero)
+                        }
                         return
                     }
 
@@ -761,9 +776,9 @@ extension DesignCanvasView {
                     return
                 }
 
-                // 펜 도구 활성 경로: translation 크기와 무관하게 항상 finalize
-                // (짧은 획도 isTap으로 오판되어 activePathPoints가 잔존하는 버그 방지)
-                if !vm.activePathPoints.isEmpty {
+                // 활성 그리기(펜/도형) 중에는 translation 크기와 무관하게 항상 finalize
+                // (짧은 획·드래그도 isTap으로 오판되어 상태가 잔존하는 버그 방지)
+                if !vm.activePathPoints.isEmpty || vm.activeDragStart != nil {
                     vm.handleDragEnded(at: endPt)
                     cursorFor(endPt).set()
                     return
@@ -901,10 +916,18 @@ extension DesignCanvasView {
                width: abs(b.x - a.x), height: abs(b.y - a.y))
     }
 
-    private func shapePath(type: ShapeElement.ShapeType, in rect: CGRect, cornerRadius r: CGFloat) -> Path {
+    private func shapePath(type: ShapeElement.ShapeType, in rect: CGRect, cornerRadii r: CornerRadii) -> Path {
         switch type {
-        case .rectangle: return r > 0 ? Path(roundedRect: rect, cornerRadius: r) : Path(rect)
-        case .ellipse: return Path(ellipseIn: rect)
+        case .rectangle:
+            if r == .zero { return Path(rect) }
+            return UnevenRoundedRectangle(
+                topLeadingRadius:    r.topLeft,
+                bottomLeadingRadius: r.bottomLeft,
+                bottomTrailingRadius:r.bottomRight,
+                topTrailingRadius:   r.topRight
+            ).path(in: rect)
+        case .ellipse:
+            return Path(ellipseIn: rect)
         }
     }
 

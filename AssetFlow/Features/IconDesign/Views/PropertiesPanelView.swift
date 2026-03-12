@@ -1,3 +1,4 @@
+import AppKit
 import SwiftUI
 
 struct PropertiesPanelView: View {
@@ -11,6 +12,10 @@ struct PropertiesPanelView: View {
                     Divider()
                     constraintsSection
                     Divider()
+                    if showsCornerRadius {
+                        cornerRadiusSection
+                        Divider()
+                    }
                     styleSection
                     if hasTextSelection {
                         Divider()
@@ -18,12 +23,21 @@ struct PropertiesPanelView: View {
                     }
                 }
             }
-            .frame(minHeight: 500)
+            .frame(minHeight: 600)
 
             layersSection
                 .frame(minHeight: 60)
         }
         .background(Color(nsColor: .controlBackgroundColor))
+        .onHover { hover in
+            if hover { NSCursor.arrow.set() }
+        }
+    }
+
+    /// Corner Radius 섹션을 표시할 조건: 선택된 사각형 요소 or 사각형 도구 활성 (다중 선택 시 비표시)
+    private var showsCornerRadius: Bool {
+        if let el = vm.selectedElement, case .shape(let s) = el { return s.shapeType == .rectangle }
+        return vm.selectedTool == .rectangle && vm.selectedElementIds.isEmpty
     }
 
     // MARK: - Text selection helpers
@@ -43,6 +57,69 @@ struct PropertiesPanelView: View {
                case .text(let t) = el { return t }
         }
         return nil
+    }
+
+    // MARK: - Multi-selection style helpers
+
+    private var selectedElements: [CanvasElement] {
+        vm.project.elements.filter { vm.selectedElementIds.contains($0.id) }
+    }
+
+    private func colorsEqual(_ a: Color, _ b: Color) -> Bool {
+        guard let ca = NSColor(a).usingColorSpace(.sRGB),
+              let cb = NSColor(b).usingColorSpace(.sRGB) else { return false }
+        return abs(ca.redComponent   - cb.redComponent)   < 0.001 &&
+               abs(ca.greenComponent - cb.greenComponent) < 0.001 &&
+               abs(ca.blueComponent  - cb.blueComponent)  < 0.001 &&
+               abs(ca.alphaComponent - cb.alphaComponent) < 0.001
+    }
+
+    /// (표시 값 %, isMixed)
+    private var multiOpacity: (CGFloat, Bool) {
+        let vals = selectedElements.map { CGFloat($0.opacity) }
+        guard let first = vals.first else { return (100, false) }
+        let mixed = !vals.dropFirst().allSatisfy { abs($0 - first) < 0.001 }
+        return (first * 100, mixed)
+    }
+
+    private var multiHasFill: Bool {
+        selectedElements.contains { switch $0 { case .shape, .path: return true; default: return false } }
+    }
+
+    /// (fillColor, isMixed)
+    private var multiFill: (Color, Bool) {
+        let colors: [Color] = selectedElements.compactMap {
+            switch $0 {
+            case .shape(let s): return s.fillColor
+            case .path(let p):  return p.color
+            default:            return nil
+            }
+        }
+        guard let first = colors.first else { return (.clear, false) }
+        return (first, !colors.dropFirst().allSatisfy { colorsEqual($0, first) })
+    }
+
+    private var multiAllShapes: Bool {
+        !selectedElements.isEmpty &&
+        selectedElements.allSatisfy { if case .shape = $0 { return true }; return false }
+    }
+
+    /// (strokeColor, isMixed)
+    private var multiStrokeColor: (Color, Bool) {
+        let colors = selectedElements.compactMap { el -> Color? in
+            if case .shape(let s) = el { return s.strokeColor }; return nil
+        }
+        guard let first = colors.first else { return (.clear, false) }
+        return (first, !colors.dropFirst().allSatisfy { colorsEqual($0, first) })
+    }
+
+    /// (strokeWidth, isMixed)
+    private var multiStrokeWidth: (CGFloat, Bool) {
+        let widths = selectedElements.compactMap { el -> CGFloat? in
+            if case .shape(let s) = el { return s.strokeWidth }; return nil
+        }
+        guard let first = widths.first else { return (0, false) }
+        return (first, !widths.dropFirst().allSatisfy { abs($0 - first) < 0.01 })
     }
 
     // MARK: - Constraints section
@@ -200,13 +277,96 @@ struct PropertiesPanelView: View {
         TransformFieldView(label: label, value: value, onSubmit: onSubmit)
     }
 
+    // MARK: - Corner Radius section
+
+    private var cornerRadiusSection: some View {
+        GroupBox("Corner Radius") {
+            VStack(alignment: .leading, spacing: 8) {
+                // ── 전체(uniform) 행 ──────────────────────────────────────
+                HStack(spacing: 6) {
+                    Image(systemName: "square.on.square")
+                        .font(.caption)
+                        .foregroundStyle(.secondary)
+                        .frame(width: 14)
+                    if let radii = currentCornerRadii {
+                        if radii.isUniform {
+                            // 모두 같으면 필드 표시
+                            TransformFieldView(label: "All", value: radii.topLeft) { v in
+                                setCornerRadii(CornerRadii(max(0, v)))
+                            }
+                        } else {
+                            // 값이 다르면 "Mixed" 텍스트 표시
+                            Text("All")
+                                .font(.caption)
+                                .foregroundStyle(.secondary)
+                                .frame(width: 24, alignment: .leading)
+                            Text("Mixed")
+                                .font(.caption.monospacedDigit())
+                                .foregroundStyle(.tertiary)
+                                .frame(maxWidth: .infinity, alignment: .trailing)
+                        }
+                    } else {
+                        // 기본값 모드 (도구 선택 중)
+                        TransformFieldView(label: "All", value: vm.cornerRadii.topLeft) { v in
+                            vm.cornerRadii = CornerRadii(max(0, v))
+                        }
+                    }
+                }
+
+                // ── 4개 개별 코너 ──────────────────────────────────────
+                let radii = currentCornerRadii ?? vm.cornerRadii
+                Grid(horizontalSpacing: 6, verticalSpacing: 6) {
+                    GridRow {
+                        cornerField(label: "↖", value: radii.topLeft) { v in
+                            var r = radii; r.topLeft = max(0, v); setCornerRadii(r)
+                        }
+                        cornerField(label: "↗", value: radii.topRight) { v in
+                            var r = radii; r.topRight = max(0, v); setCornerRadii(r)
+                        }
+                    }
+                    GridRow {
+                        cornerField(label: "↙", value: radii.bottomLeft) { v in
+                            var r = radii; r.bottomLeft = max(0, v); setCornerRadii(r)
+                        }
+                        cornerField(label: "↘", value: radii.bottomRight) { v in
+                            var r = radii; r.bottomRight = max(0, v); setCornerRadii(r)
+                        }
+                    }
+                }
+            }
+            .padding(2)
+        }
+        .padding(8)
+    }
+
+    /// 선택된 사각형 요소의 CornerRadii, 없으면 nil
+    private var currentCornerRadii: CornerRadii? {
+        guard let el = vm.selectedElement, case .shape(let s) = el,
+              s.shapeType == .rectangle else { return nil }
+        return s.cornerRadii
+    }
+
+    private func setCornerRadii(_ radii: CornerRadii) {
+        if vm.selectedElement != nil {
+            vm.updateSelectedStyle(cornerRadii: radii)
+        } else {
+            vm.cornerRadii = radii
+        }
+    }
+
+    private func cornerField(label: String, value: CGFloat,
+                             onSubmit: @escaping (CGFloat) -> Void) -> some View {
+        TransformFieldView(label: label, value: value, onSubmit: onSubmit)
+            .frame(maxWidth: .infinity)
+    }
+
     // MARK: - Style section
 
     private var styleSection: some View {
         GroupBox("Style") {
             VStack(alignment: .leading, spacing: 10) {
                 if let el = vm.selectedElement {
-                    // ── 선택된 요소 편집 모드 ──────────────────────────────
+                    // ── 단일 요소 선택 ────────────────────────────────────
                     switch el {
                     case .shape(let s):
                         colorRow(label: "Fill",
@@ -223,10 +383,6 @@ struct PropertiesPanelView: View {
                                   value: Binding(get: { CGFloat(s.opacity * 100) },
                                                  set: { vm.updateSelectedStyle(opacity: Double($0 / 100)) }),
                                   range: 0...100, format: "%.0f%%")
-                        sliderRow(label: "Corner",
-                                  value: Binding(get: { s.cornerRadius },
-                                                 set: { vm.updateSelectedStyle(cornerRadius: $0) }),
-                                  range: 0...256, format: "%.0f")
                     case .path(let p):
                         colorRow(label: "Color",
                                  value: p.color,
@@ -250,6 +406,9 @@ struct PropertiesPanelView: View {
                                                  set: { vm.updateSelectedStyle(opacity: Double($0 / 100)) }),
                                   range: 0...100, format: "%.0f%%")
                     }
+                } else if !vm.selectedElementIds.isEmpty {
+                    // ── 다중 요소 선택 ────────────────────────────────────
+                    multiSelectionStyleContent
                 } else {
                     // ── 기본값 편집 모드 (새 도형에 적용) ────────────────
                     colorRow(label: "Fill", value: vm.fillColor, onChange: { vm.fillColor = $0 })
@@ -263,16 +422,43 @@ struct PropertiesPanelView: View {
                                   set: { vm.currentOpacity = $0 / 100 }
                               ),
                               range: 0...100, format: "%.0f%%")
-                    if vm.selectedTool == .rectangle {
-                        sliderRow(label: "Corner",
-                                  value: $vm.cornerRadius, range: 0...256,
-                                  format: "%.0f")
-                    }
                 }
             }
             .padding(2)
         }
         .padding(8)
+    }
+
+    @ViewBuilder
+    private var multiSelectionStyleContent: some View {
+        let opData = multiOpacity
+        mixedSliderRow(
+            label: "Opacity",
+            value: Binding(get: { opData.0 },
+                           set: { vm.updateSelectedStyle(opacity: Double($0 / 100)) }),
+            isMixed: opData.1,
+            range: 0...100, format: "%.0f%%"
+        )
+
+        if multiHasFill {
+            let fillData = multiFill
+            mixedColorRow(label: "Fill", color: fillData.0, isMixed: fillData.1,
+                          onChange: { vm.updateSelectedStyle(fillColor: $0) })
+        }
+
+        if multiAllShapes {
+            let scData = multiStrokeColor
+            mixedColorRow(label: "Stroke", color: scData.0, isMixed: scData.1,
+                          onChange: { vm.updateSelectedStyle(strokeColor: $0) })
+            let swData = multiStrokeWidth
+            mixedSliderRow(
+                label: "Width",
+                value: Binding(get: { swData.0 },
+                               set: { vm.updateSelectedStyle(strokeWidth: $0) }),
+                isMixed: swData.1,
+                range: 0...40, format: "%.1f"
+            )
+        }
     }
 
     private func colorRow(label: String, value: Color, onChange: @escaping (Color) -> Void) -> some View {
@@ -284,6 +470,53 @@ struct PropertiesPanelView: View {
             ColorPicker("", selection: Binding(get: { value }, set: { onChange($0) }),
                         supportsOpacity: true)
                 .labelsHidden()
+        }
+    }
+
+    private func mixedColorRow(label: String, color: Color, isMixed: Bool,
+                                onChange: @escaping (Color) -> Void) -> some View {
+        HStack {
+            Text(label)
+                .font(.caption)
+                .foregroundStyle(.secondary)
+                .frame(width: 46, alignment: .leading)
+            ColorPicker("", selection: Binding(
+                get: { isMixed ? Color(nsColor: .systemGray) : color },
+                set: { onChange($0) }
+            ), supportsOpacity: true)
+            .labelsHidden()
+            if isMixed {
+                Text("Mixed")
+                    .font(.caption2)
+                    .foregroundStyle(.tertiary)
+            }
+            Spacer()
+        }
+    }
+
+    private func mixedSliderRow(
+        label: String,
+        value: Binding<CGFloat>,
+        isMixed: Bool,
+        range: ClosedRange<CGFloat>,
+        format: String
+    ) -> some View {
+        HStack(spacing: 6) {
+            Text(label)
+                .font(.caption)
+                .foregroundStyle(.secondary)
+                .frame(width: 46, alignment: .leading)
+            Slider(value: value, in: range)
+            Group {
+                if isMixed {
+                    Text("Mixed").foregroundStyle(.tertiary)
+                } else {
+                    Text(String(format: format, value.wrappedValue))
+                }
+            }
+            .font(.caption)
+            .monospacedDigit()
+            .frame(width: 38, alignment: .trailing)
         }
     }
 
@@ -308,32 +541,23 @@ struct PropertiesPanelView: View {
 
     // MARK: - Typography section
 
-    // 자주 쓰이는 서체 목록
-    private static let availableFonts: [String] = [
-        "Helvetica", "Helvetica Neue", "Arial", "Georgia",
-        "Times New Roman", "Courier New", "Futura",
-        "SF Pro Display", "SF Pro Text"
-    ]
-
     private var typographySection: some View {
         GroupBox("Typography") {
             VStack(alignment: .leading, spacing: 10) {
-                // 서체
+                // 서체 (시스템 폰트 패널)
                 HStack {
                     Text("Font")
                         .font(.caption)
                         .foregroundStyle(.secondary)
                         .frame(width: 46, alignment: .leading)
-                    Picker("", selection: Binding(
-                        get: { firstSelectedText?.fontName ?? vm.textFontName },
-                        set: { vm.updateSelectedTextStyle(fontName: $0) }
-                    )) {
-                        ForEach(Self.availableFonts, id: \.self) { name in
-                            Text(name).tag(name)
-                        }
-                    }
-                    .labelsHidden()
-                    .pickerStyle(.menu)
+                    FontPickerButton(
+                        fontName: firstSelectedText?.fontName ?? vm.textFontName,
+                        fontSize: firstSelectedText?.fontSize ?? vm.textFontSize,
+                        isBold:   firstSelectedText?.isBold   ?? vm.textIsBold,
+                        isItalic: firstSelectedText?.isItalic ?? vm.textIsItalic,
+                        onChange: { vm.updateSelectedTextStyle(fontName: $0) }
+                    )
+                    .frame(maxWidth: .infinity)
                 }
 
                 // 크기
@@ -347,7 +571,7 @@ struct PropertiesPanelView: View {
                     format: "%.0f"
                 )
 
-                // 스타일 (굵기, 기울기)
+                // 스타일 (굵기, 기울기) — ⌘⇧B / ⌘⇧I
                 HStack {
                     Text("Style")
                         .font(.caption)
@@ -357,20 +581,23 @@ struct PropertiesPanelView: View {
                         get: { firstSelectedText?.isBold ?? vm.textIsBold },
                         set: { vm.updateSelectedTextStyle(isBold: $0) }
                     )) {
-                        Image(systemName: "bold")
-                            .font(.caption)
+                        Image(systemName: "bold").font(.caption)
                     }
                     .toggleStyle(.button)
                     .controlSize(.small)
+                    .keyboardShortcut("b", modifiers: [.command, .shift])
+                    .help("Bold (⌘⇧B)")
+
                     Toggle(isOn: Binding(
                         get: { firstSelectedText?.isItalic ?? vm.textIsItalic },
                         set: { vm.updateSelectedTextStyle(isItalic: $0) }
                     )) {
-                        Image(systemName: "italic")
-                            .font(.caption)
+                        Image(systemName: "italic").font(.caption)
                     }
                     .toggleStyle(.button)
                     .controlSize(.small)
+                    .keyboardShortcut("i", modifiers: [.command, .shift])
+                    .help("Italic (⌘⇧I)")
                     Spacer()
                 }
 
@@ -381,7 +608,7 @@ struct PropertiesPanelView: View {
                     onChange: { vm.updateSelectedTextStyle(textColor: $0) }
                 )
 
-                // 정렬
+                // 정렬 — ⌘⇧L / ⌘⇧E / ⌘⇧R
                 HStack {
                     Text("Align")
                         .font(.caption)
@@ -390,7 +617,6 @@ struct PropertiesPanelView: View {
                     HStack(spacing: 4) {
                         ForEach(TextAlignmentOption.allCases, id: \.rawValue) { opt in
                             let isSelected = (firstSelectedText?.alignment ?? vm.textAlignment) == opt
-
                             Button {
                                 vm.updateSelectedTextStyle(alignment: opt)
                             } label: {
@@ -403,6 +629,8 @@ struct PropertiesPanelView: View {
                             .padding(4)
                             .background(isSelected ? Color.accentColor.opacity(0.2) : Color.clear)
                             .clipShape(RoundedRectangle(cornerRadius: 4))
+                            .keyboardShortcut(alignShortcut(opt), modifiers: [.command, .shift])
+                            .help(alignHelp(opt))
                         }
                     }
                 }
@@ -410,6 +638,22 @@ struct PropertiesPanelView: View {
             .padding(2)
         }
         .padding(8)
+    }
+
+    private func alignShortcut(_ opt: TextAlignmentOption) -> KeyEquivalent {
+        switch opt {
+        case .left:   return "l"
+        case .center: return "c"
+        case .right:  return "r"
+        }
+    }
+
+    private func alignHelp(_ opt: TextAlignmentOption) -> String {
+        switch opt {
+        case .left:   return "Align Left (⌘⇧L)"
+        case .center: return "Align Center (⌘⇧C)"
+        case .right:  return "Align Right (⌘⇧R)"
+        }
     }
 
     // MARK: - Layers section
@@ -428,14 +672,35 @@ struct PropertiesPanelView: View {
             .padding(.horizontal, 12)
             .padding(.vertical, 6)
 
-            List(vm.elements.reversed(), selection: $vm.selectedElementIds) { element in
-                LayerRowView(element: element, vm: vm)
-                    .tag(element.id)
-            }
-            .listStyle(.plain)
-            .onDeleteCommand {
-                vm.deleteSelectedElements()
-            }
+            LayersListView(vm: vm)
+        }
+    }
+}
+
+// MARK: - Layers list (Enter-key rename 관리)
+
+private struct LayersListView: View {
+    @Bindable var vm: IconDesignViewModel
+    @State private var renamingElementId: UUID? = nil
+
+    var body: some View {
+        List(vm.elements.reversed(), selection: $vm.selectedElementIds) { element in
+            LayerRowView(
+                element: element,
+                vm: vm,
+                renamingElementId: $renamingElementId
+            )
+            .tag(element.id)
+        }
+        .listStyle(.plain)
+        .onDeleteCommand { vm.deleteSelectedElements() }
+        // List가 포커스를 유지하므로 Enter 키를 항상 안정적으로 수신
+        .onKeyPress(.return) {
+            guard vm.selectedElementIds.count == 1,
+                  let id = vm.selectedElementIds.first,
+                  renamingElementId == nil else { return .ignored }
+            renamingElementId = id
+            return .handled
         }
     }
 }
@@ -455,9 +720,11 @@ private struct TransformFieldView: View {
             Text(label)
                 .font(.caption)
                 .foregroundStyle(.secondary)
-                .frame(width: 12, alignment: .leading)
+                .frame(minWidth: 20, alignment: .leading)
+            
             TextField("", text: $text)
                 .font(.caption.monospacedDigit())
+                .layoutPriority(0.0)
                 .multilineTextAlignment(.trailing)
                 .textFieldStyle(.roundedBorder)
                 .focused($isFocused)
@@ -494,6 +761,16 @@ private struct TransformFieldView: View {
 private struct LayerRowView: View {
     let element: CanvasElement
     @Bindable var vm: IconDesignViewModel
+    @Binding var renamingElementId: UUID?
+
+    @State private var draftName   = ""
+    @FocusState private var fieldFocused: Bool
+
+    private var isRenaming: Bool { renamingElementId == element.id }
+
+    private var isSingleSelected: Bool {
+        vm.selectedElementIds.count == 1 && vm.selectedElementIds.contains(element.id)
+    }
 
     var body: some View {
         HStack(spacing: 6) {
@@ -502,9 +779,19 @@ private struct LayerRowView: View {
                 .foregroundStyle(.secondary)
                 .frame(width: 14)
 
-            Text(element.name)
-                .font(.caption)
-                .lineLimit(1)
+            if isRenaming {
+                TextField("", text: $draftName)
+                    .font(.caption)
+                    .lineLimit(1)
+                    .textFieldStyle(.plain)
+                    .focused($fieldFocused)
+                    .onSubmit { commitRename() }
+                    .onKeyPress(.escape) { cancelRename(); return .handled }
+            } else {
+                Text(element.name)
+                    .font(.caption)
+                    .lineLimit(1)
+            }
 
             Spacer()
 
@@ -515,19 +802,51 @@ private struct LayerRowView: View {
             .buttonStyle(.plain)
             .foregroundStyle(element.isVisible ? AnyShapeStyle(.primary) : AnyShapeStyle(.tertiary))
         }
+        // 더블 클릭으로 이름 변경 시작
+        .simultaneousGesture(
+            TapGesture(count: 2).onEnded {
+                guard isSingleSelected else { return }
+                startRename()
+            }
+        )
         .contextMenu {
-            Button("Bring Forward")    { vm.bringForward(id: element.id) }
+            Button("Rename") { startRename() }
+                .disabled(vm.selectedElementIds.count > 1)
+            Divider()
+            Button("Bring Forward")  { vm.bringForward(id: element.id) }
                 .keyboardShortcut("]", modifiers: .command)
-            Button("Send Backward")    { vm.sendBackward(id: element.id) }
+            Button("Send Backward")  { vm.sendBackward(id: element.id) }
                 .keyboardShortcut("[", modifiers: .command)
-            Button("Bring to Front")   { vm.bringToFront(id: element.id) }
+            Button("Bring to Front") { vm.bringToFront(id: element.id) }
                 .keyboardShortcut("]", modifiers: [.command, .shift])
-            Button("Send to Back")     { vm.sendToBack(id: element.id) }
+            Button("Send to Back")   { vm.sendToBack(id: element.id) }
                 .keyboardShortcut("[", modifiers: [.command, .shift])
             Divider()
             Button("Delete", role: .destructive) { vm.deleteElement(id: element.id) }
                 .keyboardShortcut(.delete, modifiers: [])
         }
+        // renamingElementId가 이 행으로 설정되면 TextField 포커스 부여
+        .onChange(of: renamingElementId) { _, id in
+            if id == element.id {
+                draftName = element.name
+                Task { @MainActor in fieldFocused = true }
+            }
+        }
+    }
+
+    private func startRename() {
+        draftName = element.name
+        renamingElementId = element.id
+        Task { @MainActor in fieldFocused = true }
+    }
+
+    private func commitRename() {
+        vm.renameElement(id: element.id, name: draftName)
+        renamingElementId = nil
+    }
+
+    private func cancelRename() {
+        renamingElementId = nil
     }
 
     private var iconName: String {
@@ -630,4 +949,73 @@ private struct ScaleFieldView: View {
 #Preview {
     PropertiesPanelView(vm: IconDesignViewModel())
         .frame(width: 240, height: 700)
+}
+
+// MARK: - Font picker (opens system NSFontPanel)
+
+/// 시스템 폰트 패널을 여는 버튼. ColorPicker처럼 외부 패널에서 서체를 선택한다.
+struct FontPickerButton: NSViewRepresentable {
+    let fontName: String
+    let fontSize: CGFloat
+    let isBold: Bool
+    let isItalic: Bool
+    let onChange: (String) -> Void
+
+    func makeCoordinator() -> Coordinator { Coordinator(onChange: onChange) }
+
+    func makeNSView(context: Context) -> FontButton {
+        let btn = FontButton()
+        btn.coordinator = context.coordinator
+        return btn
+    }
+
+    func updateNSView(_ nsView: FontButton, context: Context) {
+        var font = NSFont(name: fontName, size: fontSize) ?? NSFont.systemFont(ofSize: fontSize)
+        if isBold   { font = NSFontManager.shared.convert(font, toHaveTrait: .boldFontMask)   }
+        if isItalic { font = NSFontManager.shared.convert(font, toHaveTrait: .italicFontMask) }
+        nsView.currentFont = font
+        nsView.title = fontName
+        nsView.coordinator = context.coordinator
+    }
+
+    // MARK: FontButton
+
+    final class FontButton: NSButton, NSFontChanging {
+        var coordinator: Coordinator?
+        var currentFont: NSFont = NSFont.systemFont(ofSize: 12)
+
+        init() {
+            super.init(frame: .zero)
+            bezelStyle = .rounded
+            controlSize = .small
+            font = NSFont.systemFont(ofSize: NSFont.smallSystemFontSize)
+            lineBreakMode = .byTruncatingTail
+            target = self
+            action = #selector(openPanel)
+        }
+        required init?(coder: NSCoder) { fatalError() }
+
+        override var acceptsFirstResponder: Bool { true }
+
+        @objc func openPanel() {
+            window?.makeFirstResponder(self)
+            NSFontManager.shared.setSelectedFont(currentFont, isMultiple: false)
+            NSFontPanel.shared.makeKeyAndOrderFront(nil)
+        }
+
+        /// NSFontPanel이 서체를 변경하면 NSFontManager가 first responder 체인으로 전달함.
+        func changeFont(_ sender: NSFontManager?) {
+            guard let sender = sender else { return }
+            let newFont = sender.convert(currentFont)
+            let family = newFont.familyName ?? newFont.fontName
+            coordinator?.onChange(family)
+        }
+    }
+
+    // MARK: Coordinator
+
+    final class Coordinator: NSObject {
+        let onChange: (String) -> Void
+        init(onChange: @escaping (String) -> Void) { self.onChange = onChange }
+    }
 }
