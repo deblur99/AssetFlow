@@ -15,7 +15,7 @@ struct CanvasExportView: View {
 
     private var offset: CGPoint {
         CGPoint(
-            x: (targetSize.width  - canvasSize.width  * scale) / 2,
+            x: (targetSize.width - canvasSize.width * scale) / 2,
             y: (targetSize.height - canvasSize.height * scale) / 2
         )
     }
@@ -46,10 +46,10 @@ struct CanvasExportView: View {
     {
         switch element {
         case .shape(let shape):
-            let rect   = scaled(shape.frame, by: z, offset: o)
+            let rect = scaled(shape.frame, by: z, offset: o)
             let center = CGPoint(x: rect.midX, y: rect.midY)
-            let path   = shapePath(type: shape.shapeType, in: rect,
-                                   cornerRadii: shape.cornerRadii.scaled(by: z))
+            let path = shapePath(type: shape.shapeType, in: rect,
+                                 cornerRadii: shape.cornerRadii.scaled(by: z))
             ctx.drawLayer { inner in
                 if let sh = shape.shadow {
                     inner.addFilter(.shadow(color: sh.color,
@@ -67,9 +67,9 @@ struct CanvasExportView: View {
 
         case .path(let pathEl):
             guard pathEl.points.count > 1 else { return }
-            let f2     = scaled(pathEl.frame, by: z, offset: o)
+            let f2 = scaled(pathEl.frame, by: z, offset: o)
             let center = CGPoint(x: f2.midX, y: f2.midY)
-            let p      = polyline(from: pathEl.points, zoom: z, offset: o)
+            let p = polyline(from: pathEl.points, zoom: z, offset: o)
             ctx.drawLayer { inner in
                 if let sh = pathEl.shadow {
                     inner.addFilter(.shadow(color: sh.color,
@@ -84,7 +84,7 @@ struct CanvasExportView: View {
             }
 
         case .image(let imgEl):
-            let rect   = scaled(imgEl.frame, by: z, offset: o)
+            let rect = scaled(imgEl.frame, by: z, offset: o)
             let center = CGPoint(x: rect.midX, y: rect.midY)
             guard let cg = imgEl.image.cgImage(forProposedRect: nil,
                                                context: nil, hints: nil) else { return }
@@ -101,11 +101,11 @@ struct CanvasExportView: View {
 
         case .text(let textEl):
             guard textEl.isVisible, !textEl.text.isEmpty else { return }
-            let rect   = scaled(textEl.frame, by: z, offset: o)
+            let rect = scaled(textEl.frame, by: z, offset: o)
             let center = CGPoint(x: rect.midX, y: rect.midY)
             var font = NSFont(name: textEl.fontName, size: textEl.fontSize * z)
                 ?? NSFont.systemFont(ofSize: textEl.fontSize * z)
-            if textEl.isBold   { font = NSFontManager.shared.convert(font, toHaveTrait: .boldFontMask)   }
+            if textEl.isBold { font = NSFontManager.shared.convert(font, toHaveTrait: .boldFontMask) }
             if textEl.isItalic { font = NSFontManager.shared.convert(font, toHaveTrait: .italicFontMask) }
             let ps = NSMutableParagraphStyle()
             ps.alignment = textEl.alignment.nsAlignment
@@ -117,8 +117,9 @@ struct CanvasExportView: View {
             let ts = NSTextStorage(attributedString: attrStr)
             let lm = NSLayoutManager()
             let tc = NSTextContainer(containerSize: CGSize(
-                width:  max(rect.width, 1),
-                height: CGFloat.greatestFiniteMagnitude))
+                width: max(rect.width, 1),
+                height: CGFloat.greatestFiniteMagnitude
+            ))
             ts.addLayoutManager(lm)
             lm.addTextContainer(tc)
             lm.ensureLayout(for: tc)
@@ -150,23 +151,23 @@ struct CanvasExportView: View {
                     })
                     switch grad.type {
                     case .linear:
-                        let r     = CGFloat(grad.angle * .pi / 180)
-                        let start = CGPoint(x: rect.midX - sin(r) * rect.width  * 0.5,
+                        let r = CGFloat(grad.angle * .pi / 180)
+                        let start = CGPoint(x: rect.midX - sin(r) * rect.width * 0.5,
                                             y: rect.midY - cos(r) * rect.height * 0.5)
-                        let end   = CGPoint(x: rect.midX + sin(r) * rect.width  * 0.5,
-                                            y: rect.midY + cos(r) * rect.height * 0.5)
+                        let end = CGPoint(x: rect.midX + sin(r) * rect.width * 0.5,
+                                          y: rect.midY + cos(r) * rect.height * 0.5)
                         inner.fill(Path(rect), with: .linearGradient(gradient,
-                                                                      startPoint: start,
-                                                                      endPoint: end))
+                                                                     startPoint: start,
+                                                                     endPoint: end))
                     case .radial:
                         let radius = hypot(rect.width, rect.height) * 0.5
                         inner.fill(Path(rect), with: .radialGradient(gradient,
-                                                                      center: CGPoint(x: rect.midX, y: rect.midY),
-                                                                      startRadius: 0,
-                                                                      endRadius: radius))
+                                                                     center: CGPoint(x: rect.midX, y: rect.midY),
+                                                                     startRadius: 0,
+                                                                     endRadius: radius))
                     case .angular:
                         inner.fill(Path(rect), with: .conicGradient(gradient,
-                                                                     center: CGPoint(x: rect.midX, y: rect.midY)))
+                                                                    center: CGPoint(x: rect.midX, y: rect.midY)))
                     }
                 } else {
                     inner.fill(Path(rect), with: .color(bg.fillColor))
@@ -178,7 +179,7 @@ struct CanvasExportView: View {
     private func scaled(_ rect: CGRect, by factor: CGFloat, offset: CGPoint) -> CGRect {
         CGRect(x: rect.minX * factor + offset.x,
                y: rect.minY * factor + offset.y,
-               width:  rect.width  * factor,
+               width: rect.width * factor,
                height: rect.height * factor)
     }
 
@@ -193,15 +194,16 @@ struct CanvasExportView: View {
     }
 
     private func shapePath(type: ShapeElement.ShapeType,
-                           in rect: CGRect, cornerRadii r: CornerRadii) -> Path {
+                           in rect: CGRect, cornerRadii r: CornerRadii) -> Path
+    {
         switch type {
         case .rectangle:
             if r == .zero { return Path(rect) }
             return UnevenRoundedRectangle(
-                topLeadingRadius:     r.topLeft,
-                bottomLeadingRadius:  r.bottomLeft,
+                topLeadingRadius: r.topLeft,
+                bottomLeadingRadius: r.bottomLeft,
                 bottomTrailingRadius: r.bottomRight,
-                topTrailingRadius:    r.topRight
+                topTrailingRadius: r.topRight
             ).path(in: rect)
         case .ellipse:
             return Path(ellipseIn: rect)
@@ -226,30 +228,36 @@ struct CanvasExportView: View {
 @MainActor
 enum ExportService {
     static func export(vm: IconDesignViewModel) {
-        // Capture all state before opening the panel
-        let elements    = vm.project.elements
-        let canvasSize  = vm.project.canvasSize
-        let targetSize  = vm.exportSize.size
-        let format      = vm.exportFormat
+        // Capture all state before dispatching
+        let elements = vm.project.elements
+        let canvasSize = vm.project.canvasSize
+        let targetSize = vm.exportSize.size
+        let format = vm.exportFormat
         let projectName = vm.project.name
 
-        let panel = NSSavePanel()
-        panel.allowedContentTypes = [format.utType]
-        panel.nameFieldStringValue = projectName
+        // DispatchQueue.main.async guarantees NSThread.isMainThread == true,
+        // which AppKit requires for NSSavePanel. @MainActor alone does not
+        // satisfy AppKit's pthread-based thread check in all SwiftUI contexts.
+        // - Signing & Capabilities - App Sandbox - File Access - User Selected File에서 권한을 Read Only에서 Read/Write로 수정하여 앱 크래시 방지
+        Task { @MainActor in
+            let panel = NSSavePanel()
+            panel.allowedContentTypes = [format.utType]
+            panel.nameFieldStringValue = projectName
 
-        // Use begin(completionHandler:) instead of runModal() to avoid
-        // AppKit thread-safety assertions triggered from SwiftUI button actions.
-        panel.begin { response in
+            let response = await panel.begin()
             guard response == .OK, let url = panel.url else { return }
-            Task { @MainActor in
-                if format == .svg {
-                    let svg = SVGGenerator.generate(elements: elements,
-                                                    canvasSize: canvasSize,
-                                                    targetSize: targetSize)
-                    try? svg.data(using: .utf8)?.write(to: url)
-                    return
-                }
 
+            var saveError: Error?
+            if format == .svg {
+                let svg = SVGGenerator.generate(elements: elements,
+                                                canvasSize: canvasSize,
+                                                targetSize: targetSize)
+                do {
+                    try svg.data(using: .utf8)?.write(to: url)
+                } catch {
+                    saveError = error
+                }
+            } else {
                 let exportView = CanvasExportView(elements: elements,
                                                   canvasSize: canvasSize,
                                                   targetSize: targetSize)
@@ -259,12 +267,40 @@ enum ExportService {
 
                 let data: Data?
                 switch format {
-                case .png:  data = nsImage.exportPNGData()
+                case .png: data = nsImage.exportPNGData()
                 case .jpeg: data = nsImage.exportJPEGData()
-                case .pdf:  data = makePDFData(from: nsImage, size: targetSize)
-                case .svg:  data = nil
+                case .pdf: data = makePDFData(from: nsImage, size: targetSize)
+                case .svg: data = nil
                 }
-                try? data?.write(to: url)
+                do {
+                    try data?.write(to: url)
+                } catch {
+                    saveError = error
+                }
+            }
+
+            showSaveResult(url: url, error: saveError)
+        }
+    }
+
+    @MainActor
+    private static func showSaveResult(url: URL, error: Error?) {
+        let alert = NSAlert()
+        if let error {
+            alert.alertStyle = .critical
+            alert.messageText = "저장 실패"
+            alert.informativeText = error.localizedDescription
+            alert.addButton(withTitle: "확인")
+            alert.runModal()
+        } else {
+            alert.alertStyle = .informational
+            alert.messageText = "저장 완료"
+            alert.informativeText = url.path
+            alert.addButton(withTitle: "Finder에서 열기")
+            alert.addButton(withTitle: "확인")
+            let result = alert.runModal()
+            if result == .alertFirstButtonReturn {
+                NSWorkspace.shared.activateFileViewerSelecting([url])
             }
         }
     }
@@ -289,13 +325,13 @@ enum ExportService {
 private extension NSImage {
     func exportPNGData() -> Data? {
         guard let tiff = tiffRepresentation,
-              let rep  = NSBitmapImageRep(data: tiff) else { return nil }
+              let rep = NSBitmapImageRep(data: tiff) else { return nil }
         return rep.representation(using: .png, properties: [:])
     }
 
     func exportJPEGData(compressionQuality: CGFloat = 0.92) -> Data? {
         guard let tiff = tiffRepresentation,
-              let rep  = NSBitmapImageRep(data: tiff) else { return nil }
+              let rep = NSBitmapImageRep(data: tiff) else { return nil }
         return rep.representation(using: .jpeg,
                                   properties: [.compressionFactor: compressionQuality])
     }
@@ -308,14 +344,14 @@ enum SVGGenerator {
                          canvasSize: CGSize,
                          targetSize: CGSize) -> String
     {
-        let uniformScale = min(targetSize.width  / canvasSize.width,
+        let uniformScale = min(targetSize.width / canvasSize.width,
                                targetSize.height / canvasSize.height)
-        let offsetX = (targetSize.width  - canvasSize.width  * uniformScale) / 2
+        let offsetX = (targetSize.width - canvasSize.width * uniformScale) / 2
         let offsetY = (targetSize.height - canvasSize.height * uniformScale) / 2
 
-        var defs   = [String]()
+        var defs = [String]()
         var shapes = [String]()
-        var idx    = 0
+        var idx = 0
 
         // Letterbox fill
         let lbColor = elements.compactMap { e -> Color? in
@@ -352,9 +388,9 @@ enum SVGGenerator {
                     defs.append(svgDropShadow(id: fid, shadow: sh, scale: uniformScale))
                     shadAttr = " filter=\"url(#\(fid))\""
                 }
-                let fill   = s.fillColor.svgFill
+                let fill = s.fillColor.svgFill
                 let stroke = s.strokeColor.svgFill
-                let sw     = s.strokeWidth * uniformScale
+                let sw = s.strokeWidth * uniformScale
                 switch s.shapeType {
                 case .rectangle:
                     shapes.append(roundedRectSVG(fr, radii: s.cornerRadii.scaled(by: uniformScale),
@@ -363,7 +399,7 @@ enum SVGGenerator {
                                                  extra: transform + shadAttr))
                 case .ellipse:
                     shapes.append(
-                        "<ellipse cx=\"\(f(fr.midX))\" cy=\"\(f(fr.midY))\" rx=\"\(f(fr.width/2))\" ry=\"\(f(fr.height/2))\" fill=\"\(fill)\" stroke=\"\(stroke)\" stroke-width=\"\(f(sw))\" opacity=\"\(f(s.opacity))\"\(transform)\(shadAttr)/>"
+                        "<ellipse cx=\"\(f(fr.midX))\" cy=\"\(f(fr.midY))\" rx=\"\(f(fr.width / 2))\" ry=\"\(f(fr.height / 2))\" fill=\"\(fill)\" stroke=\"\(stroke)\" stroke-width=\"\(f(sw))\" opacity=\"\(f(s.opacity))\"\(transform)\(shadAttr)/>"
                     )
                 }
 
@@ -376,7 +412,7 @@ enum SVGGenerator {
                     shadAttr = " filter=\"url(#\(fid))\""
                 }
                 let pts = pe.points.map { CGPoint(x: $0.x * uniformScale + offsetX,
-                                                   y: $0.y * uniformScale + offsetY) }
+                                                  y: $0.y * uniformScale + offsetY) }
                 let d = "M " + pts.map { "\(f($0.x)),\(f($0.y))" }.joined(separator: " L ")
                 let fr = frame(pe.frame, scale: uniformScale, ox: offsetX, oy: offsetY)
                 let transform = rotateAttr(pe.rotation, cx: fr.midX, cy: fr.midY)
@@ -389,8 +425,8 @@ enum SVGGenerator {
                 let fr = frame(ie.frame, scale: uniformScale, ox: offsetX, oy: offsetY)
                 let transform = rotateAttr(ie.rotation, cx: fr.midX, cy: fr.midY)
                 guard let tiff = ie.image.tiffRepresentation,
-                      let rep  = NSBitmapImageRep(data: tiff),
-                      let png  = rep.representation(using: .png, properties: [:]) else { continue }
+                      let rep = NSBitmapImageRep(data: tiff),
+                      let png = rep.representation(using: .png, properties: [:]) else { continue }
                 let b64 = png.base64EncodedString()
                 shapes.append(
                     "<image href=\"data:image/png;base64,\(b64)\" x=\"\(f(fr.minX))\" y=\"\(f(fr.minY))\" width=\"\(f(fr.width))\" height=\"\(f(fr.height))\" opacity=\"\(f(ie.opacity))\"\(transform)/>"
@@ -400,13 +436,13 @@ enum SVGGenerator {
                 let fr = frame(te.frame, scale: uniformScale, ox: offsetX, oy: offsetY)
                 let transform = rotateAttr(te.rotation, cx: fr.midX, cy: fr.midY)
                 let fs = te.fontSize * uniformScale
-                let fw  = te.isBold   ? "bold"   : "normal"
+                let fw = te.isBold ? "bold" : "normal"
                 let fst = te.isItalic ? "italic" : "normal"
                 let (anchor, tx): (String, Double) = {
                     switch te.alignment {
-                    case .left:   return ("start",  Double(fr.minX))
+                    case .left: return ("start", Double(fr.minX))
                     case .center: return ("middle", Double(fr.midX))
-                    case .right:  return ("end",    Double(fr.maxX))
+                    case .right: return ("end", Double(fr.maxX))
                     }
                 }()
                 var shadAttr = ""
@@ -426,7 +462,7 @@ enum SVGGenerator {
         }
 
         let w = Int(targetSize.width), h = Int(targetSize.height)
-        let defsBlock   = defs.isEmpty ? "" : "<defs>\n\(defs.joined(separator: "\n"))\n</defs>"
+        let defsBlock = defs.isEmpty ? "" : "<defs>\n\(defs.joined(separator: "\n"))\n</defs>"
         let shapesBlock = shapes.joined(separator: "\n")
         return """
         <?xml version="1.0" encoding="UTF-8"?>
@@ -439,8 +475,8 @@ enum SVGGenerator {
 
     // MARK: - SVG helpers
 
-    private static func f(_ v: Double) -> String   { String(format: "%.2f", v) }
-    private static func f(_ v: CGFloat) -> String  { String(format: "%.2f", Double(v)) }
+    private static func f(_ v: Double) -> String { String(format: "%.2f", v) }
+    private static func f(_ v: CGFloat) -> String { String(format: "%.2f", Double(v)) }
     private static func fi(_ v: CGFloat) -> String { "\(Int(v))" }
 
     private static func frame(_ r: CGRect, scale s: CGFloat, ox: CGFloat, oy: CGFloat) -> CGRect {
@@ -461,7 +497,7 @@ enum SVGGenerator {
             .joined(separator: "\n  ")
         switch config.type {
         case .linear:
-            let r  = config.angle * .pi / 180
+            let r = config.angle * .pi / 180
             let x1 = String(format: "%.3f", 0.5 - sin(r) * 0.5)
             let y1 = String(format: "%.3f", 0.5 - cos(r) * 0.5)
             let x2 = String(format: "%.3f", 0.5 + sin(r) * 0.5)
@@ -473,8 +509,8 @@ enum SVGGenerator {
     }
 
     private static func svgDropShadow(id: String, shadow: ShadowConfig, scale: CGFloat) -> String {
-        let dx  = shadow.offsetX * scale
-        let dy  = shadow.offsetY * scale
+        let dx = shadow.offsetX * scale
+        let dy = shadow.offsetY * scale
         let std = max(shadow.blur * scale / 2, 0)
         return "<filter id=\"\(id)\" x=\"-50%\" y=\"-50%\" width=\"200%\" height=\"200%\"><feDropShadow dx=\"\(f(dx))\" dy=\"\(f(dy))\" stdDeviation=\"\(f(std))\" flood-color=\"\(shadow.color.svgHex)\"/></filter>"
     }
@@ -493,7 +529,7 @@ enum SVGGenerator {
         // Per-corner path
         let (x, y, w, h) = (rect.minX, rect.minY, rect.width, rect.height)
         let tl = radii.topLeft, tr = radii.topRight, bl = radii.bottomLeft, br = radii.bottomRight
-        let d = "M\(f(x+tl)),\(f(y)) L\(f(x+w-tr)),\(f(y)) Q\(f(x+w)),\(f(y)) \(f(x+w)),\(f(y+tr)) L\(f(x+w)),\(f(y+h-br)) Q\(f(x+w)),\(f(y+h)) \(f(x+w-br)),\(f(y+h)) L\(f(x+bl)),\(f(y+h)) Q\(f(x)),\(f(y+h)) \(f(x)),\(f(y+h-bl)) L\(f(x)),\(f(y+tl)) Q\(f(x)),\(f(y)) \(f(x+tl)),\(f(y)) Z"
+        let d = "M\(f(x + tl)),\(f(y)) L\(f(x + w - tr)),\(f(y)) Q\(f(x + w)),\(f(y)) \(f(x + w)),\(f(y + tr)) L\(f(x + w)),\(f(y + h - br)) Q\(f(x + w)),\(f(y + h)) \(f(x + w - br)),\(f(y + h)) L\(f(x + bl)),\(f(y + h)) Q\(f(x)),\(f(y + h)) \(f(x)),\(f(y + h - bl)) L\(f(x)),\(f(y + tl)) Q\(f(x)),\(f(y)) \(f(x + tl)),\(f(y)) Z"
         return "<path d=\"\(d)\" \(attrs)/>"
     }
 }
@@ -503,11 +539,11 @@ enum SVGGenerator {
 private extension Color {
     var svgHex: String {
         guard let nc = NSColor(self).usingColorSpace(.sRGB) else { return "#000000" }
-        let r = Int((nc.redComponent   * 255).rounded())
+        let r = Int((nc.redComponent * 255).rounded())
         let g = Int((nc.greenComponent * 255).rounded())
-        let b = Int((nc.blueComponent  * 255).rounded())
+        let b = Int((nc.blueComponent * 255).rounded())
         let a = nc.alphaComponent
-        if a < 0.001  { return "none" }
+        if a < 0.001 { return "none" }
         if a >= 0.999 { return String(format: "#%02x%02x%02x", r, g, b) }
         return String(format: "rgba(%d,%d,%d,%.3f)", r, g, b, a)
     }
