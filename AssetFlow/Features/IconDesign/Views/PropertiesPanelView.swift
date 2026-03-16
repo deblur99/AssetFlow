@@ -4,6 +4,7 @@ import SwiftUI
 struct PropertiesPanelView: View {
     @Bindable var vm: IconDesignViewModel
     @State private var panelTab: PanelTab = .attributes
+    @State private var isOnLayerAllSelectionButtonHover: Bool = false
 
     private enum PanelTab: String, CaseIterable {
         case attributes = "Attributes"
@@ -862,53 +863,10 @@ struct PropertiesPanelView: View {
                     value: firstSelectedText?.textColor ?? vm.textColor,
                     onChange: { vm.updateSelectedTextStyle(textColor: $0) }
                 )
-
-                // 정렬 — ⌘⇧L / ⌘⇧E / ⌘⇧R
-                HStack {
-                    Text("Align")
-                        .font(.caption)
-                        .foregroundStyle(.secondary)
-                        .frame(width: 46, alignment: .leading)
-                    HStack(spacing: 4) {
-                        ForEach(TextAlignmentOption.allCases, id: \.rawValue) { opt in
-                            let isSelected = (firstSelectedText?.alignment ?? vm.textAlignment) == opt
-                            Button {
-                                vm.updateSelectedTextStyle(alignment: opt)
-                            } label: {
-                                Image(systemName: opt.sfSymbol)
-                                    .resizable()
-                                    .scaledToFit()
-                                    .frame(width: 12)
-                            }
-                            .buttonStyle(.plain)
-                            .padding(4)
-                            .background(isSelected ? Color.accentColor.opacity(0.2) : Color.clear)
-                            .clipShape(RoundedRectangle(cornerRadius: 4))
-                            .keyboardShortcut(alignShortcut(opt), modifiers: [.command, .shift])
-                            .help(alignHelp(opt))
-                        }
-                    }
-                }
             }
             .padding(2)
         }
         .padding(8)
-    }
-
-    private func alignShortcut(_ opt: TextAlignmentOption) -> KeyEquivalent {
-        switch opt {
-        case .left:   return "l"
-        case .center: return "c"
-        case .right:  return "r"
-        }
-    }
-
-    private func alignHelp(_ opt: TextAlignmentOption) -> String {
-        switch opt {
-        case .left:   return "Align Left (⌘⇧L)"
-        case .center: return "Align Center (⌘⇧C)"
-        case .right:  return "Align Right (⌘⇧R)"
-        }
     }
 
     // MARK: - Layers section
@@ -927,6 +885,12 @@ struct PropertiesPanelView: View {
                 } label: {
                     Image(systemName: allSelected ? "checkmark.square.fill" : "square.on.square")
                         .font(.caption2)
+                        .scaleEffect(isOnLayerAllSelectionButtonHover ? 1.3 : 1.0)
+                        .onHover { hover in
+                            withAnimation(.easeInOut(duration: 0.1)) {
+                                isOnLayerAllSelectionButtonHover = hover
+                            }
+                        }
                 }
                 .buttonStyle(.plain)
                 .foregroundStyle(.secondary)
@@ -1089,11 +1053,11 @@ private struct LayerRowView: View {
                         if case .background = el { return false }
                         return true
                     }
-                    Button("선택한 레이어 \(nonBgSelected.count)개 내보내기") {
+                    Button("Export selected \(nonBgSelected.count) layers") {
                         ExportService.exportLayers(nonBgSelected, vm: vm)
                     }
                 } else {
-                    Button("이 레이어 내보내기") {
+                    Button("Export this layer") {
                         ExportService.exportLayers([element], vm: vm)
                     }
                 }

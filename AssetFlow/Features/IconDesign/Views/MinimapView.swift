@@ -219,7 +219,6 @@ struct MinimapView: View {
             if textEl.isBold   { font = NSFontManager.shared.convert(font, toHaveTrait: .boldFontMask)   }
             if textEl.isItalic { font = NSFontManager.shared.convert(font, toHaveTrait: .italicFontMask) }
             let ps = NSMutableParagraphStyle()
-            ps.alignment = textEl.alignment.nsAlignment
             let attrStr = NSAttributedString(string: textEl.text, attributes: [
                 .font: font,
                 .foregroundColor: NSColor(textEl.textColor),

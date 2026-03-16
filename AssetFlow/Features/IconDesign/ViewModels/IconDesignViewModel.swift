@@ -161,7 +161,6 @@ final class IconDesignViewModel {
     var textIsBold: Bool = false
     var textIsItalic: Bool = false
     var textColor: Color = .black
-    var textAlignment: TextAlignmentOption = .left
 
     // MARK: - Text editing state
 
@@ -607,8 +606,7 @@ extension IconDesignViewModel {
             fontSize: textFontSize,
             isBold: textIsBold,
             isItalic: textIsItalic,
-            textColor: textColor,
-            alignment: textAlignment
+            textColor: textColor
         )
         project.addElement(.text(el))
         if let id = project.elements.last?.id {
@@ -660,8 +658,7 @@ extension IconDesignViewModel {
         fontSize: CGFloat? = nil,
         isBold: Bool? = nil,
         isItalic: Bool? = nil,
-        textColor: Color? = nil,
-        alignment: TextAlignmentOption? = nil
+        textColor: Color? = nil
     ) {
         checkpoint()
         let affectsLayout = fontName != nil || fontSize != nil || isBold != nil || isItalic != nil
@@ -674,7 +671,6 @@ extension IconDesignViewModel {
             if let v = isBold { e.isBold = v }
             if let v = isItalic { e.isItalic = v }
             if let v = textColor { e.textColor = v }
-            if let v = alignment { e.alignment = v }
             e.show()
             // 폰트 속성 변경 시 현재 너비 기준으로 높이만 재측정 (너비는 고정)
             if affectsLayout {
@@ -694,7 +690,6 @@ extension IconDesignViewModel {
         if let v = isBold { textIsBold = v }
         if let v = isItalic { textIsItalic = v }
         if let v = textColor { self.textColor = v }
-        if let v = alignment { textAlignment = v }
         project.updatedAt = Date()
     }
 

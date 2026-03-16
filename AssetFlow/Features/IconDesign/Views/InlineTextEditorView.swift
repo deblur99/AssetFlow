@@ -13,7 +13,6 @@ struct InlineTextEditor: NSViewRepresentable {
     var isBold: Bool
     var isItalic: Bool
     var textColor: Color
-    var alignment: TextAlignmentOption
     var frameWidth: CGFloat // 텍스트 박스 너비 (화면 pt)
     var onEndEditing: () -> Void
     var onSizeChange: ((CGSize) -> Void)?
@@ -74,11 +73,9 @@ struct InlineTextEditor: NSViewRepresentable {
         if isItalic { font = NSFontManager.shared.convert(font, toHaveTrait: .italicFontMask) }
 
         let ps = NSMutableParagraphStyle()
-        ps.alignment = alignment.nsAlignment
 
         tv.font = font
         tv.textColor = NSColor(textColor)
-        tv.alignment = alignment.nsAlignment
         tv.typingAttributes = [
             .font:           font,
             .foregroundColor: NSColor(textColor),

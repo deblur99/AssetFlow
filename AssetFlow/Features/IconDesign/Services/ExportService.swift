@@ -108,7 +108,6 @@ struct CanvasExportView: View {
             if textEl.isBold { font = NSFontManager.shared.convert(font, toHaveTrait: .boldFontMask) }
             if textEl.isItalic { font = NSFontManager.shared.convert(font, toHaveTrait: .italicFontMask) }
             let ps = NSMutableParagraphStyle()
-            ps.alignment = textEl.alignment.nsAlignment
             let attrStr = NSAttributedString(string: textEl.text, attributes: [
                 .font: font,
                 .foregroundColor: NSColor(textEl.textColor),
@@ -464,13 +463,7 @@ enum SVGGenerator {
                 let fs = te.fontSize * uniformScale
                 let fw = te.isBold ? "bold" : "normal"
                 let fst = te.isItalic ? "italic" : "normal"
-                let (anchor, tx): (String, Double) = {
-                    switch te.alignment {
-                    case .left: return ("start", Double(fr.minX))
-                    case .center: return ("middle", Double(fr.midX))
-                    case .right: return ("end", Double(fr.maxX))
-                    }
-                }()
+                let (anchor, tx): (String, Double) = ("start", Double(fr.minX))
                 var shadAttr = ""
                 if let sh = te.shadow {
                     let fid = "shf_\(idx)"; idx += 1

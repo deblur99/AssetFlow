@@ -1,27 +1,5 @@
 import SwiftUI
 
-// MARK: - Text alignment
-
-nonisolated enum TextAlignmentOption: Int, CaseIterable {
-    case left, center, right
-
-    var nsAlignment: NSTextAlignment {
-        switch self {
-        case .left:   return .left
-        case .center: return .center
-        case .right:  return .right
-        }
-    }
-
-    var sfSymbol: String {
-        switch self {
-        case .left:   return "text.alignleft"
-        case .center: return "text.aligncenter"
-        case .right:  return "text.alignright"
-        }
-    }
-}
-
 // MARK: - Text element
 
 nonisolated struct TextElement: Identifiable {
@@ -38,11 +16,10 @@ nonisolated struct TextElement: Identifiable {
     var isBold: Bool     = false
     var isItalic: Bool   = false
     var textColor: Color = .black
-    var alignment: TextAlignmentOption = .left
     var shadow: ShadowConfig? = nil
     
     func show() {
-        print("TextElement: \(text) at \(frame.origin), font: \(fontName) \(fontSize)pt, color: \(textColor), alignment: \(alignment)")
+        print("TextElement: \(text) at \(frame.origin), font: \(fontName) \(fontSize)pt, color: \(textColor)")
     }
 }
 

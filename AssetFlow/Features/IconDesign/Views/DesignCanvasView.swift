@@ -107,7 +107,6 @@ struct DesignCanvasView: View {
                 isBold: textEl.isBold,
                 isItalic: textEl.isItalic,
                 textColor: textEl.textColor.opacity(textEl.opacity),
-                alignment: textEl.alignment,
                 frameWidth: textEl.frame.width * vm.zoom,
                 onEndEditing: { vm.endTextEdit() },
                 onSizeChange: { screenSize in
@@ -301,7 +300,6 @@ extension DesignCanvasView {
             if textEl.isBold   { font = NSFontManager.shared.convert(font, toHaveTrait: .boldFontMask)   }
             if textEl.isItalic { font = NSFontManager.shared.convert(font, toHaveTrait: .italicFontMask) }
             let ps = NSMutableParagraphStyle()
-            ps.alignment = textEl.alignment.nsAlignment
             let attrStr = NSAttributedString(string: textEl.text, attributes: [
                 .font: font,
                 .foregroundColor: NSColor(textEl.textColor),
