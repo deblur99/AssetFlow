@@ -228,21 +228,47 @@ struct CanvasExportView: View {
 @MainActor
 enum ExportService {
     static func export(vm: IconDesignViewModel) {
-        // Capture all state before dispatching
-        let elements = vm.project.elements
-        let canvasSize = vm.project.canvasSize
-        let targetSize = vm.exportSize.size
-        let format = vm.exportFormat
-        let projectName = vm.project.name
+        performExport(
+            elements: vm.project.elements,
+            canvasSize: vm.project.canvasSize,
+            targetSize: vm.exportSize.size,
+            format: vm.exportFormat,
+            fileName: vm.project.name
+        )
+    }
 
-        // DispatchQueue.main.async guarantees NSThread.isMainThread == true,
-        // which AppKit requires for NSSavePanel. @MainActor alone does not
-        // satisfy AppKit's pthread-based thread check in all SwiftUI contexts.
-        // - Signing & Capabilities - App Sandbox - File Access - User Selected File에서 권한을 Read Only에서 Read/Write로 수정하여 앱 크래시 방지
+    /// 선택한 레이어들만 내보내기. 배경 레이어는 렌더링용으로 항상 포함된다.
+    static func exportLayers(_ layers: [CanvasElement], vm: IconDesignViewModel) {
+        let background = vm.project.elements.first { if case .background = $0 { return true }; return false }
+        var elementsToRender = layers
+        if let bg = background, !elementsToRender.contains(where: { $0.id == bg.id }) {
+            elementsToRender.insert(bg, at: 0)
+        }
+        let fileName = layers.count == 1 ? layers[0].name : vm.project.name
+        performExport(
+            elements: elementsToRender,
+            canvasSize: vm.project.canvasSize,
+            targetSize: vm.exportSize.size,
+            format: vm.exportFormat,
+            fileName: fileName
+        )
+    }
+
+    // DispatchQueue.main.async guarantees NSThread.isMainThread == true,
+    // which AppKit requires for NSSavePanel. @MainActor alone does not
+    // satisfy AppKit's pthread-based thread check in all SwiftUI contexts.
+    // - Signing & Capabilities - App Sandbox - File Access - User Selected File에서 권한을 Read Only에서 Read/Write로 수정하여 앱 크래시 방지
+    private static func performExport(
+        elements: [CanvasElement],
+        canvasSize: CGSize,
+        targetSize: CGSize,
+        format: ExportFormat,
+        fileName: String
+    ) {
         Task { @MainActor in
             let panel = NSSavePanel()
             panel.allowedContentTypes = [format.utType]
-            panel.nameFieldStringValue = projectName
+            panel.nameFieldStringValue = fileName
 
             let response = await panel.begin()
             guard response == .OK, let url = panel.url else { return }

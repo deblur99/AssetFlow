@@ -920,6 +920,17 @@ struct PropertiesPanelView: View {
                     .font(.caption)
                     .foregroundStyle(.secondary)
                 Spacer()
+                let allElementIds = Set(vm.elements.map(\.id))
+                let allSelected = !allElementIds.isEmpty && vm.selectedElementIds == allElementIds
+                Button {
+                    vm.selectedElementIds = allSelected ? [] : allElementIds
+                } label: {
+                    Image(systemName: allSelected ? "checkmark.square.fill" : "square.on.square")
+                        .font(.caption2)
+                }
+                .buttonStyle(.plain)
+                .foregroundStyle(.secondary)
+                .help(allSelected ? "Deselect All" : "Select All")
                 Text("\(vm.elements.count)")
                     .font(.caption2)
                     .foregroundStyle(.tertiary)
@@ -1071,6 +1082,22 @@ private struct LayerRowView: View {
             if isBackground {
                 Text("Background layer").font(.caption).foregroundStyle(.secondary)
             } else {
+                let isPartOfMultiSelection = vm.selectedElementIds.count >= 2 && vm.selectedElementIds.contains(element.id)
+                if isPartOfMultiSelection {
+                    let nonBgSelected = vm.elements.filter { el in
+                        guard vm.selectedElementIds.contains(el.id) else { return false }
+                        if case .background = el { return false }
+                        return true
+                    }
+                    Button("선택한 레이어 \(nonBgSelected.count)개 내보내기") {
+                        ExportService.exportLayers(nonBgSelected, vm: vm)
+                    }
+                } else {
+                    Button("이 레이어 내보내기") {
+                        ExportService.exportLayers([element], vm: vm)
+                    }
+                }
+                Divider()
                 Button("Rename") { startRename() }
                     .disabled(vm.selectedElementIds.count > 1)
                 Divider()
