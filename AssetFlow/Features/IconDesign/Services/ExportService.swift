@@ -99,6 +99,28 @@ struct CanvasExportView: View {
                 inner.draw(Image(cg, scale: 1.0, label: Text(imgEl.name)), in: rect)
             }
 
+        case .symbol(let symEl):
+            let rect = scaled(symEl.frame, by: z, offset: o)
+            let center = CGPoint(x: rect.midX, y: rect.midY)
+            let pointSize = max(rect.width, rect.height)
+            let config = NSImage.SymbolConfiguration(pointSize: pointSize, weight: .regular, scale: .large)
+                .applying(NSImage.SymbolConfiguration(paletteColors: [NSColor(symEl.tintColor)]))
+            guard let nsImg = NSImage(systemSymbolName: symEl.symbolName,
+                                      accessibilityDescription: nil)?
+                    .withSymbolConfiguration(config),
+                  let cg = nsImg.cgImage(forProposedRect: nil, context: nil, hints: nil)
+            else { return }
+            ctx.drawLayer { inner in
+                if let sh = symEl.shadow {
+                    inner.addFilter(.shadow(color: sh.color,
+                                            radius: sh.blur * z,
+                                            x: sh.offsetX * z, y: sh.offsetY * z))
+                }
+                applyRotation(to: &inner, center: center, degrees: symEl.rotation)
+                inner.opacity = symEl.opacity
+                inner.draw(Image(cg, scale: 1.0, label: Text(symEl.name)), in: rect)
+            }
+
         case .text(let textEl):
             guard textEl.isVisible, !textEl.text.isEmpty else { return }
             let rect = scaled(textEl.frame, by: z, offset: o)
@@ -554,6 +576,23 @@ enum SVGGenerator {
                 let b64 = png.base64EncodedString()
                 shapes.append(
                     "<image href=\"data:image/png;base64,\(b64)\" x=\"\(f(fr.minX))\" y=\"\(f(fr.minY))\" width=\"\(f(fr.width))\" height=\"\(f(fr.height))\" opacity=\"\(f(ie.opacity))\"\(transform)/>"
+                )
+
+            case .symbol(let se):
+                let fr = frame(se.frame, scale: uniformScale, ox: offsetX, oy: offsetY)
+                let transform = rotateAttr(se.rotation, cx: fr.midX, cy: fr.midY)
+                let pointSize = max(fr.width, fr.height)
+                let config = NSImage.SymbolConfiguration(pointSize: pointSize, weight: .regular, scale: .large)
+                    .applying(NSImage.SymbolConfiguration(paletteColors: [NSColor(se.tintColor)]))
+                guard let nsImg = NSImage(systemSymbolName: se.symbolName,
+                                          accessibilityDescription: nil)?
+                        .withSymbolConfiguration(config),
+                      let tiff = nsImg.tiffRepresentation,
+                      let rep = NSBitmapImageRep(data: tiff),
+                      let png = rep.representation(using: .png, properties: [:]) else { continue }
+                let b64 = png.base64EncodedString()
+                shapes.append(
+                    "<image href=\"data:image/png;base64,\(b64)\" x=\"\(f(fr.minX))\" y=\"\(f(fr.minY))\" width=\"\(f(fr.width))\" height=\"\(f(fr.height))\" opacity=\"\(f(se.opacity))\"\(transform)/>"
                 )
 
             case .text(let te):

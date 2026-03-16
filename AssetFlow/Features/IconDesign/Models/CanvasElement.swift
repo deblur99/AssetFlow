@@ -156,6 +156,21 @@ nonisolated struct ImageElement: Identifiable {
     var shadow: ShadowConfig? = nil
 }
 
+// MARK: - SF Symbol element
+
+nonisolated struct SymbolElement: Identifiable, Codable {
+    let id: UUID
+    var name: String          = "Symbol"
+    var isVisible: Bool       = true
+    var isLocked: Bool        = false
+    var opacity: Double       = 1.0
+    var rotation: Double      = 0
+    var frame: CGRect
+    var symbolName: String
+    var tintColor: Color      = .black
+    var shadow: ShadowConfig? = nil
+}
+
 // MARK: - Wrapper enum for polymorphic storage
 
 nonisolated enum CanvasElement: Identifiable {
@@ -164,6 +179,7 @@ nonisolated enum CanvasElement: Identifiable {
     case image(ImageElement)
     case text(TextElement)
     case background(BackgroundElement)
+    case symbol(SymbolElement)
 
     var id: UUID {
         switch self {
@@ -172,6 +188,7 @@ nonisolated enum CanvasElement: Identifiable {
         case .image(let e):      e.id
         case .text(let e):       e.id
         case .background(let e): e.id
+        case .symbol(let e):     e.id
         }
     }
 
@@ -183,6 +200,7 @@ nonisolated enum CanvasElement: Identifiable {
             case .image(let e):      e.name
             case .text(let e):       e.name
             case .background(let e): e.name
+            case .symbol(let e):     e.name
             }
         }
         set {
@@ -192,6 +210,7 @@ nonisolated enum CanvasElement: Identifiable {
             case .image(var e):      e.name = newValue; self = .image(e)
             case .text(var e):       e.name = newValue; self = .text(e)
             case .background(var e): e.name = newValue; self = .background(e)
+            case .symbol(var e):     e.name = newValue; self = .symbol(e)
             }
         }
     }
@@ -204,6 +223,7 @@ nonisolated enum CanvasElement: Identifiable {
             case .image(let e):      e.isVisible
             case .text(let e):       e.isVisible
             case .background(let e): e.isVisible
+            case .symbol(let e):     e.isVisible
             }
         }
         set {
@@ -213,6 +233,7 @@ nonisolated enum CanvasElement: Identifiable {
             case .image(var e):      e.isVisible = newValue; self = .image(e)
             case .text(var e):       e.isVisible = newValue; self = .text(e)
             case .background(var e): e.isVisible = newValue; self = .background(e)
+            case .symbol(var e):     e.isVisible = newValue; self = .symbol(e)
             }
         }
     }
@@ -224,6 +245,7 @@ nonisolated enum CanvasElement: Identifiable {
         case .image(let e):  e.frame
         case .text(let e):   e.frame
         case .background:    .zero
+        case .symbol(let e): e.frame
         }
     }
 
@@ -235,6 +257,7 @@ nonisolated enum CanvasElement: Identifiable {
             case .image(let e):      e.opacity
             case .text(let e):       e.opacity
             case .background(let e): e.opacity
+            case .symbol(let e):     e.opacity
             }
         }
         set {
@@ -244,6 +267,7 @@ nonisolated enum CanvasElement: Identifiable {
             case .image(var e):      e.opacity = newValue; self = .image(e)
             case .text(var e):       e.opacity = newValue; self = .text(e)
             case .background(var e): e.opacity = newValue; self = .background(e)
+            case .symbol(var e):     e.opacity = newValue; self = .symbol(e)
             }
         }
     }
@@ -256,6 +280,7 @@ nonisolated enum CanvasElement: Identifiable {
             case .image(let e):  e.rotation
             case .text(let e):   e.rotation
             case .background:    0
+            case .symbol(let e): e.rotation
             }
         }
         set {
@@ -264,7 +289,8 @@ nonisolated enum CanvasElement: Identifiable {
             case .path(var e):   e.rotation = newValue; self = .path(e)
             case .image(var e):  e.rotation = newValue; self = .image(e)
             case .text(var e):   e.rotation = newValue; self = .text(e)
-            case .background:    break  // background has no rotation
+            case .background:    break
+            case .symbol(var e): e.rotation = newValue; self = .symbol(e)
             }
         }
     }
@@ -277,6 +303,7 @@ nonisolated enum CanvasElement: Identifiable {
             case .image(let e):  e.shadow
             case .text(let e):   e.shadow
             case .background:    nil
+            case .symbol(let e): e.shadow
             }
         }
         set {
@@ -285,7 +312,8 @@ nonisolated enum CanvasElement: Identifiable {
             case .path(var e):   e.shadow = newValue; self = .path(e)
             case .image(var e):  e.shadow = newValue; self = .image(e)
             case .text(var e):   e.shadow = newValue; self = .text(e)
-            case .background:    break  // no shadow for background
+            case .background:    break
+            case .symbol(var e): e.shadow = newValue; self = .symbol(e)
             }
         }
     }
@@ -342,7 +370,16 @@ nonisolated enum CanvasElement: Identifiable {
             copy.frame = e.frame.offsetBy(dx: offset, dy: offset)
             return .text(copy)
         case .background:
-            return self  // Background is unique, not duplicated
+            return self
+        case .symbol(let e):
+            var copy = e
+            copy = SymbolElement(
+                id: UUID(), name: e.name + " Copy",
+                isVisible: e.isVisible, isLocked: e.isLocked,
+                opacity: e.opacity, rotation: e.rotation,
+                frame: e.frame.offsetBy(dx: offset, dy: offset),
+                symbolName: e.symbolName, tintColor: e.tintColor, shadow: e.shadow)
+            return .symbol(copy)
         }
     }
 
@@ -354,3 +391,4 @@ nonisolated enum CanvasElement: Identifiable {
         return CGPoint(x: v.x * cos - v.y * sin, y: v.x * sin + v.y * cos)
     }
 }
+

@@ -337,6 +337,29 @@ extension DesignCanvasView {
                 inner.draw(Image(nsImage: img), in: rect)
             }
 
+        case .symbol(let symEl):
+            let rect = scaled(symEl.frame, by: z)
+            let center = CGPoint(x: rect.midX, y: rect.midY)
+            let pointSize = max(rect.width, rect.height)
+            let config = NSImage.SymbolConfiguration(pointSize: pointSize, weight: .regular, scale: .large)
+                .applying(NSImage.SymbolConfiguration(paletteColors: [NSColor(symEl.tintColor)]))
+            guard let nsImg = NSImage(systemSymbolName: symEl.symbolName,
+                                      accessibilityDescription: nil)?
+                    .withSymbolConfiguration(config),
+                  let cg = nsImg.cgImage(forProposedRect: nil, context: nil, hints: nil)
+            else { return }
+            ctx.drawLayer { inner in
+                if let sh = symEl.shadow {
+                    inner.addFilter(.shadow(color: sh.color,
+                                            radius: sh.blur * z,
+                                            x: sh.offsetX * z,
+                                            y: sh.offsetY * z))
+                }
+                applyRotation(to: &inner, center: center, degrees: symEl.rotation)
+                inner.opacity = symEl.opacity
+                inner.draw(Image(cg, scale: 1.0, label: Text(symEl.name)), in: rect)
+            }
+
         case .background(let bg):
             let rect = CGRect(origin: .zero,
                               size: CGSize(width: vm.project.canvasSize.width * z,

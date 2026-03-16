@@ -441,6 +441,14 @@ struct PropertiesPanelView: View {
                                   value: Binding(get: { CGFloat(i.opacity * 100) },
                                                  set: { vm.updateSelectedStyle(opacity: Double($0 / 100)) }),
                                   range: 0...100, format: "%.0f%%")
+                    case .symbol(let s):
+                        colorRow(label: "Tint",
+                                 value: s.tintColor,
+                                 onChange: { vm.updateSymbolTintColor(id: s.id, color: $0) })
+                        sliderRow(label: "Opacity",
+                                  value: Binding(get: { CGFloat(s.opacity * 100) },
+                                                 set: { vm.updateSelectedStyle(opacity: Double($0 / 100)) }),
+                                  range: 0...100, format: "%.0f%%")
                     case .text(let t):
                         sliderRow(label: "Opacity",
                                   value: Binding(get: { CGFloat(t.opacity * 100) },
@@ -1111,6 +1119,7 @@ private struct LayerRowView: View {
         case .path:              "scribble"
         case .image:             "photo"
         case .text:              "textformat"
+        case .symbol(let s):     s.symbolName
         }
     }
 }

@@ -2,6 +2,7 @@ import SwiftUI
 
 struct CanvasToolbarView: View {
     @Bindable var vm: IconDesignViewModel
+    @State private var isSymbolPickerPresented = false
 
     var body: some View {
         VStack(spacing: 2) {
@@ -30,6 +31,8 @@ struct CanvasToolbarView: View {
                     switch tool {
                     case .imagePicker:
                         vm.importImage()
+                    case .sfSymbolPicker:
+                        isSymbolPickerPresented = true
                     case .showGrid:
                         vm.toggleEnabledToolId(tool)
                     }
@@ -46,6 +49,9 @@ struct CanvasToolbarView: View {
             } else {
                 vm.hoveredTool = nil
             }
+        }
+        .sheet(isPresented: $isSymbolPickerPresented) {
+            SFSymbolPickerView(vm: vm)
         }
     }
 }

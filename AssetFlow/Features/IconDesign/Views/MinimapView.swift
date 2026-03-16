@@ -209,6 +209,29 @@ struct MinimapView: View {
                 inner.draw(Image(cg, scale: 1.0, label: Text(imgEl.name)), in: rect)
             }
 
+        case .symbol(let symEl):
+            let rect = scaledRect(symEl.frame)
+            let center = CGPoint(x: rect.midX, y: rect.midY)
+            let pointSize = max(rect.width, rect.height)
+            let config = NSImage.SymbolConfiguration(pointSize: pointSize, weight: .regular, scale: .large)
+                .applying(NSImage.SymbolConfiguration(paletteColors: [NSColor(symEl.tintColor)]))
+            guard let nsImg = NSImage(systemSymbolName: symEl.symbolName,
+                                      accessibilityDescription: nil)?
+                    .withSymbolConfiguration(config),
+                  let cg = nsImg.cgImage(forProposedRect: nil, context: nil, hints: nil)
+            else { return }
+            ctx.drawLayer { inner in
+                if let sh = symEl.shadow {
+                    inner.addFilter(.shadow(color: sh.color,
+                                            radius: sh.blur * scale,
+                                            x: sh.offsetX * scale,
+                                            y: sh.offsetY * scale))
+                }
+                applyRotation(to: &inner, center: center, degrees: symEl.rotation)
+                inner.opacity = symEl.opacity
+                inner.draw(Image(cg, scale: 1.0, label: Text(symEl.name)), in: rect)
+            }
+
         case .text(let textEl):
             guard textEl.isVisible, !textEl.text.isEmpty else { return }
             let rect = scaledRect(textEl.frame)

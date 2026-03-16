@@ -280,6 +280,7 @@ final class IconDesignViewModel {
         case .path(var e):  e.name = trimmed; project.elements[idx] = .path(e)
         case .image(var e): e.name = trimmed; project.elements[idx] = .image(e)
         case .text(var e):  e.name = trimmed; project.elements[idx] = .text(e)
+        case .symbol(var e): e.name = trimmed; project.elements[idx] = .symbol(e)
         case .background:   break  // Background name is fixed
         }
         project.updatedAt = Date()
@@ -396,6 +397,10 @@ final class IconDesignViewModel {
             case .image(var e):
                 if let v = opacity { e.opacity = v }
                 project.elements[idx] = .image(e)
+                changed = true
+            case .symbol(var e):
+                if let v = opacity { e.opacity = v }
+                project.elements[idx] = .symbol(e)
                 changed = true
             case .text(var e):
                 if let v = opacity { e.opacity = v }
@@ -570,6 +575,9 @@ extension IconDesignViewModel {
         case .image(var e):
             e.frame = newFrame
             project.elements[idx] = .image(e)
+        case .symbol(var e):
+            e.frame = newFrame
+            project.elements[idx] = .symbol(e)
         case .path(var e):
             let oldFrame = e.frame
             let scaleX = oldFrame.width > 0 ? newFrame.width / oldFrame.width : 1
@@ -886,6 +894,33 @@ extension IconDesignViewModel {
         )
         project.addElement(.image(imgEl))
         if let id = project.elements.last?.id { selectedElementIds = [id] }
+    }
+
+    func addSymbol(name: String) {
+        checkpoint()
+        let side = min(project.canvasSize.width, project.canvasSize.height) * 0.4
+        let size = CGSize(width: side, height: side)
+        let origin = CGPoint(
+            x: (project.canvasSize.width  - side) / 2,
+            y: (project.canvasSize.height - side) / 2
+        )
+        let el = SymbolElement(
+            id: UUID(),
+            name: name,
+            frame: CGRect(origin: origin, size: size),
+            symbolName: name
+        )
+        project.addElement(.symbol(el))
+        if let id = project.elements.last?.id { selectedElementIds = [id] }
+    }
+
+    func updateSymbolTintColor(id: UUID, color: Color) {
+        guard let idx = project.elements.firstIndex(where: { $0.id == id }),
+              case .symbol(var e) = project.elements[idx] else { return }
+        e.tintColor = color
+        project.elements[idx] = .symbol(e)
+        project.updatedAt = Date()
+        scheduleAutoSave()
     }
 }
 

@@ -43,7 +43,7 @@ extension ImageElement: Codable {
 
 extension CanvasElement: Codable {
     private enum ElementType: String, Codable {
-        case shape, path, image, text, background
+        case shape, path, image, text, background, symbol
     }
     private enum CodingKeys: String, CodingKey { case type, data }
 
@@ -61,6 +61,8 @@ extension CanvasElement: Codable {
             self = .text(try c.decode(TextElement.self, forKey: .data))
         case .background:
             self = .background(try c.decode(BackgroundElement.self, forKey: .data))
+        case .symbol:
+            self = .symbol(try c.decode(SymbolElement.self, forKey: .data))
         }
     }
 
@@ -81,6 +83,9 @@ extension CanvasElement: Codable {
             try c.encode(e, forKey: .data)
         case .background(let e):
             try c.encode(ElementType.background, forKey: .type)
+            try c.encode(e, forKey: .data)
+        case .symbol(let e):
+            try c.encode(ElementType.symbol, forKey: .type)
             try c.encode(e, forKey: .data)
         }
     }
