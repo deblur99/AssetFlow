@@ -4,8 +4,7 @@ import SwiftUI
 /// NSTextView 기반의 캔버스 인라인 텍스트 편집기.
 /// 텍스트 도구로 요소를 클릭했을 때 캔버스 위에 오버레이로 표시된다.
 ///
-/// - `frameWidth`: 텍스트 박스 너비(화면 pt). 이 너비로 텍스트를 줄 바꿈하고 정렬을 적용한다.
-/// - `onSizeChange`: 컨텐츠 높이가 바뀔 때 화면 좌표계(pt) 기준 높이를 보고
+/// - `onSizeChange`: 텍스트 내용이 바뀔 때 화면 좌표계(pt) 기준 크기(너비·높이)를 보고한다.
 struct InlineTextEditor: NSViewRepresentable {
     @Binding var text: String
     var fontName: String
@@ -13,7 +12,6 @@ struct InlineTextEditor: NSViewRepresentable {
     var isBold: Bool
     var isItalic: Bool
     var textColor: Color
-    var frameWidth: CGFloat // 텍스트 박스 너비 (화면 pt)
     var onEndEditing: () -> Void
     var onSizeChange: ((CGSize) -> Void)?
 
@@ -27,14 +25,14 @@ struct InlineTextEditor: NSViewRepresentable {
         tv.isRichText = false
         tv.backgroundColor = .clear
         tv.drawsBackground = false
-        // 너비는 frameWidth로 고정; 텍스트가 그 안에서 줄 바꿈되며 높이만 확장됨
+        // 컨테이너 너비·높이 제한 없음 → 텍스트 내용에 따라 자동 확장
         tv.textContainer?.widthTracksTextView  = false
         tv.textContainer?.heightTracksTextView = false
         tv.textContainer?.containerSize = CGSize(
-            width:  frameWidth,
+            width:  CGFloat.greatestFiniteMagnitude,
             height: CGFloat.greatestFiniteMagnitude)
         tv.isVerticallyResizable   = true
-        tv.isHorizontallyResizable = false
+        tv.isHorizontallyResizable = true
         tv.autoresizingMask        = []
         tv.textContainerInset = .zero
 
@@ -50,11 +48,6 @@ struct InlineTextEditor: NSViewRepresentable {
     }
 
     func updateNSView(_ tv: NSTextView, context: Context) {
-        // frameWidth 변경 시 컨테이너 너비 동기화
-        tv.textContainer?.containerSize = CGSize(
-            width:  frameWidth,
-            height: CGFloat.greatestFiniteMagnitude)
-
         if !context.coordinator.isEditing, tv.string != text {
             tv.string = text
             applyStyle(to: tv)

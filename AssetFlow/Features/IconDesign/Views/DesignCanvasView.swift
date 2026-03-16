@@ -107,7 +107,6 @@ struct DesignCanvasView: View {
                 isBold: textEl.isBold,
                 isItalic: textEl.isItalic,
                 textColor: textEl.textColor.opacity(textEl.opacity),
-                frameWidth: textEl.frame.width * vm.zoom,
                 onEndEditing: { vm.endTextEdit() },
                 onSizeChange: { screenSize in
                     // 화면 크기 → 캔버스 좌표계 크기로 변환

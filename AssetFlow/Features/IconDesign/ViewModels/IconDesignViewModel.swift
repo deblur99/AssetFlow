@@ -523,8 +523,6 @@ extension IconDesignViewModel {
             project.elements[idx] = .image(e)
         case .path(var e):
             let oldFrame = e.frame
-            let dx = newFrame.minX - oldFrame.minX
-            let dy = newFrame.minY - oldFrame.minY
             let scaleX = oldFrame.width > 0 ? newFrame.width / oldFrame.width : 1
             let scaleY = oldFrame.height > 0 ? newFrame.height / oldFrame.height : 1
             e.points = e.points.map { pt in
@@ -594,9 +592,8 @@ extension IconDesignViewModel {
         let nsFont = NSFont(name: textFontName, size: textFontSize)
             ?? NSFont.systemFont(ofSize: textFontSize)
         let lineH = ceil(nsFont.ascender - nsFont.descender + nsFont.leading)
-        // 고정 너비 텍스트 박스 (200pt): 텍스트가 박스보다 짧아야 정렬이 의미를 가짐
-        let defaultWidth: CGFloat = 200
-        let frame = CGRect(x: point.x, y: point.y, width: defaultWidth, height: lineH)
+        // 초기 크기는 최소값으로; 편집기 첫 reportSize 콜백에서 실제 크기로 즉시 갱신됨
+        let frame = CGRect(x: point.x, y: point.y, width: 1, height: lineH)
         let el = TextElement(
             id: UUID(),
             name: "Text \(project.elements.count + 1)",
@@ -616,13 +613,14 @@ extension IconDesignViewModel {
         project.updatedAt = Date()
     }
 
-    /// 인라인 편집기에서 측정된 높이(캔버스 좌표계)로 텍스트 요소 frame을 갱신한다.
-    /// 너비는 고정(사용자가 조절), 높이만 텍스트 내용에 맞춰 자동 조절된다.
+    /// 인라인 편집기에서 측정된 크기(캔버스 좌표계)로 텍스트 요소 frame을 갱신한다.
+    /// 너비·높이 모두 텍스트 내용에 맞춰 자동 조절된다.
     func updateTextFrame(id: UUID, canvasSize: CGSize) {
         guard let idx = project.elements.firstIndex(where: { $0.id == id }),
               case .text(var e) = project.elements[idx] else { return }
         e.frame = CGRect(origin: e.frame.origin,
-                         size: CGSize(width: e.frame.width, height: max(1, canvasSize.height)))
+                         size: CGSize(width: max(1, canvasSize.width),
+                                      height: max(1, canvasSize.height)))
         project.elements[idx] = .text(e)
     }
 
