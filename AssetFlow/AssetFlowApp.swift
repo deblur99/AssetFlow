@@ -8,9 +8,17 @@ struct AssetFlowApp: App {
         WindowGroup {
             MainWindowView()
                 .environment(appState)
-                .frame(minWidth: 600, minHeight: 400)  // 최소 창 크기
+                .frame(minWidth: 600, minHeight: 400)
+                .onReceive(
+                    NotificationCenter.default.publisher(
+                        for: NSApplication.willTerminateNotification)
+                ) { _ in
+                    // 앱 종료 직전 즉시 저장 (debounce 대기 없이)
+                    ProjectFileService.saveAutosave(
+                        appState.iconDesignViewModel.project)
+                }
         }
-        .defaultSize(width: 1080, height: 800) // 초기 창 크기
+        .defaultSize(width: 1080, height: 800)
         .windowStyle(.titleBar)
         .windowToolbarStyle(.unified(showsTitle: true))
         .commands {

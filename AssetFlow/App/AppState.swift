@@ -21,7 +21,13 @@ nonisolated enum AppFeature: String, CaseIterable, Identifiable {
 final class AppState {
     var selectedFeature: AppFeature = .iconDesign
     var iconDesignViewModel = IconDesignViewModel()
-    
+
+    init() {
+        if let saved = ProjectFileService.loadAutosave() {
+            iconDesignViewModel.loadProject(saved)
+        }
+    }
+
     func iconDesignZoomIn() {
         iconDesignViewModel.zoomIn()
     }

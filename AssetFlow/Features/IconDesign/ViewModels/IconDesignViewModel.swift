@@ -70,7 +70,9 @@ enum ActiveTransform {
 final class IconDesignViewModel {
     // MARK: - Project
 
-    var project = IconProject()
+    var project = IconProject() {
+        didSet { scheduleAutosave() }
+    }
 
     // MARK: - Tool state
 
@@ -178,6 +180,19 @@ final class IconDesignViewModel {
     private var redoStack: [[CanvasElement]] = []
     private let maxUndoCount = 50
 
+    // MARK: - Autosave
+
+    private var autosaveTask: Task<Void, Never>?
+
+    private func scheduleAutosave() {
+        autosaveTask?.cancel()
+        autosaveTask = Task { @MainActor in
+            try? await Task.sleep(for: .seconds(2))
+            guard !Task.isCancelled else { return }
+            ProjectFileService.saveAutosave(self.project)
+        }
+    }
+
     // MARK: - Zoom Threshold
 
     private let maxZoomRatio = 10.0 // 1000%
@@ -206,6 +221,23 @@ final class IconDesignViewModel {
 
     var canUndo: Bool { !undoStack.isEmpty }
     var canRedo: Bool { !redoStack.isEmpty }
+
+    // MARK: - Auto-save
+
+    private var autoSaveTask: Task<Void, Never>?
+
+    /// 마지막 호출로부터 2초 뒤 자동 저장을 실행한다 (debounce).
+    private func scheduleAutoSave() {
+        autoSaveTask?.cancel()
+        autoSaveTask = Task { @MainActor in
+            try? await Task.sleep(for: .seconds(2))
+            guard !Task.isCancelled else { return }
+            let snapshot = self.project
+            Task.detached(priority: .utility) {
+                AutoSaveService.save(project: snapshot)
+            }
+        }
+    }
     
     // MARK: - Clipboard
 
@@ -216,6 +248,10 @@ final class IconDesignViewModel {
     func initViewModel() {
         // TODO: 임시 처리: 이후 툴팁 언제 띄울지 결정되면 코드 수정
         isTipBannerPresented = true
+        // 마지막 작업 이어받기 — 자동 저장 파일이 있으면 복원
+        if let saved = AutoSaveService.load() {
+            loadProject(saved)
+        }
     }
 
     // MARK: - Edit Metadata
@@ -223,6 +259,7 @@ final class IconDesignViewModel {
     func renameProject(_ newName: String) {
         project.name = newName
         project.updatedAt = Date()
+        scheduleAutoSave()
     }
 
     /// 불러온 프로젝트로 교체하고 편집 상태를 초기화한다.
@@ -393,6 +430,7 @@ final class IconDesignViewModel {
         bg.fillColor = color
         project.elements[idx] = .background(bg)
         project.updatedAt = Date()
+        scheduleAutoSave()
     }
 
     func updateBackgroundGradient(_ gradient: GradientConfig?) {
@@ -401,6 +439,7 @@ final class IconDesignViewModel {
         bg.gradient = gradient
         project.elements[idx] = .background(bg)
         project.updatedAt = Date()
+        scheduleAutoSave()
     }
 
     func updateBackgroundOpacity(_ opacity: Double) {
@@ -409,6 +448,7 @@ final class IconDesignViewModel {
         bg.opacity = opacity
         project.elements[idx] = .background(bg)
         project.updatedAt = Date()
+        scheduleAutoSave()
     }
 }
 
@@ -657,6 +697,7 @@ extension IconDesignViewModel {
         e.text = text
         project.elements[idx] = .text(e)
         project.updatedAt = Date()
+        scheduleAutoSave()
     }
 
     /// 선택된 모든 텍스트 요소의 타이포그래피 속성을 일괄 업데이트한다.
@@ -855,6 +896,7 @@ extension IconDesignViewModel {
         undoStack.append(project.elements)
         if undoStack.count > maxUndoCount { undoStack.removeFirst() }
         redoStack.removeAll()
+        scheduleAutoSave()
     }
 
     private func resetActiveDrawing() {
