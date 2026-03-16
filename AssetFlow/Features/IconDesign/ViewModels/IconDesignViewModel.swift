@@ -225,6 +225,15 @@ final class IconDesignViewModel {
         project.updatedAt = Date()
     }
 
+    /// 불러온 프로젝트로 교체하고 편집 상태를 초기화한다.
+    func loadProject(_ newProject: IconProject) {
+        project               = newProject
+        undoStack             = []
+        redoStack             = []
+        selectedElementIds    = []
+        editingTextElementId  = nil
+    }
+
     func renameElement(id: UUID, name: String) {
         let trimmed = name.trimmingCharacters(in: .whitespaces)
         guard !trimmed.isEmpty,

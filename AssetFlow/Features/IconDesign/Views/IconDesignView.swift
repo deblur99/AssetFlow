@@ -88,6 +88,26 @@ struct IconDesignView: View {
                 Divider()
 
                 Button {
+                    ProjectFileService.saveProject(vm.project)
+                } label: {
+                    Label("Save", systemImage: "arrow.down.doc")
+                }
+                .help("Save Project (⌘S)")
+                .keyboardShortcut("s", modifiers: .command)
+
+                Button {
+                    ProjectFileService.openProject { project in
+                        vm.loadProject(project)
+                    }
+                } label: {
+                    Label("Open", systemImage: "folder.badge.plus")
+                }
+                .help("Open Project (⌘O)")
+                .keyboardShortcut("o", modifiers: .command)
+
+                Divider()
+
+                Button {
                     ExportService.export(vm: vm)
                 } label: {
                     Label("Export", systemImage: "square.and.arrow.up")

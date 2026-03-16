@@ -40,3 +40,5 @@ nonisolated struct IconProject: Identifiable {
         updatedAt = Date()
     }
 }
+
+extension IconProject: Codable {}

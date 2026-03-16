@@ -2,7 +2,7 @@ import SwiftUI
 
 // MARK: - Text element
 
-nonisolated struct TextElement: Identifiable {
+nonisolated struct TextElement: Identifiable, Codable {
     var id: UUID         = UUID()
     var name: String     = "Text"
     var isVisible: Bool  = true
@@ -25,7 +25,7 @@ nonisolated struct TextElement: Identifiable {
 
 // MARK: - Corner radii
 
-nonisolated struct CornerRadii: Equatable {
+nonisolated struct CornerRadii: Equatable, Codable {
     var topLeft:     CGFloat = 0
     var topRight:    CGFloat = 0
     var bottomLeft:  CGFloat = 0
@@ -57,7 +57,7 @@ nonisolated struct CornerRadii: Equatable {
 
 // MARK: - Shadow
 
-nonisolated struct ShadowConfig: Equatable {
+nonisolated struct ShadowConfig: Equatable, Codable {
     var color:   Color   = Color.black.opacity(0.35)
     var blur:    CGFloat = 6
     var offsetX: CGFloat = 0
@@ -66,13 +66,13 @@ nonisolated struct ShadowConfig: Equatable {
 
 // MARK: - Gradient
 
-nonisolated struct GradientStop: Equatable {
+nonisolated struct GradientStop: Equatable, Codable {
     var color:    Color
     var location: CGFloat  // 0...1
 }
 
-nonisolated struct GradientConfig: Equatable {
-    nonisolated enum GradientType: String, CaseIterable {
+nonisolated struct GradientConfig: Equatable, Codable {
+    nonisolated enum GradientType: String, CaseIterable, Codable {
         case linear  = "Linear"
         case radial  = "Radial"
         case angular = "Angular"
@@ -88,7 +88,7 @@ nonisolated struct GradientConfig: Equatable {
 
 // MARK: - Background element
 
-nonisolated struct BackgroundElement: Identifiable {
+nonisolated struct BackgroundElement: Identifiable, Codable {
     let id: UUID
     var name:      String          = "Background"
     var isVisible: Bool            = true
@@ -99,7 +99,7 @@ nonisolated struct BackgroundElement: Identifiable {
 
 // MARK: - Leaf element types
 
-nonisolated struct ShapeElement: Identifiable {
+nonisolated struct ShapeElement: Identifiable, Codable {
     let id: UUID
     var name: String
     var isVisible: Bool  = true
@@ -120,10 +120,10 @@ nonisolated struct ShapeElement: Identifiable {
         set { cornerRadii = CornerRadii(newValue) }
     }
 
-    nonisolated enum ShapeType { case rectangle, ellipse }
+    nonisolated enum ShapeType: String, Codable { case rectangle, ellipse }
 }
 
-nonisolated struct PathElement: Identifiable {
+nonisolated struct PathElement: Identifiable, Codable {
     let id: UUID
     var name: String
     var isVisible: Bool  = true
