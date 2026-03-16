@@ -650,7 +650,7 @@ struct PropertiesPanelView: View {
         }
 
         ForEach(config.stops.indices, id: \.self) { i in
-            HStack(spacing: 6) {
+            HStack(spacing: 16) {
                 ColorPicker("", selection: Binding(
                     get: { config.stops[i].color },
                     set: { new in var c = config; c.stops[i].color = new; onChange(c) }
@@ -682,6 +682,7 @@ struct PropertiesPanelView: View {
                     .help("Remove stop")
                 }
             }
+            .padding(.leading, 4)
         }
     }
 

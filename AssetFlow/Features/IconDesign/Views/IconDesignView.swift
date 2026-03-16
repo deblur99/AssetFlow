@@ -22,7 +22,7 @@ struct IconDesignView: View {
             Divider()
 
             PropertiesPanelView(vm: vm)
-                .frame(width: 240)
+                .frame(width: 280)
         }
         .navigationTitle(vm.project.name)
         .toolbar {

@@ -237,20 +237,119 @@ enum ExportService {
     }
 
     /// 선택한 레이어들만 내보내기. 배경 레이어는 렌더링용으로 항상 포함된다.
+    /// - 단일 레이어: 기존 NSSavePanel 흐름
+    /// - 다중 레이어: 별도 PNG / 하나의 파일 중 선택 후 내보내기
     static func exportLayers(_ layers: [CanvasElement], vm: IconDesignViewModel) {
         let background = vm.project.elements.first { if case .background = $0 { return true }; return false }
-        var elementsToRender = layers
-        if let bg = background, !elementsToRender.contains(where: { $0.id == bg.id }) {
-            elementsToRender.insert(bg, at: 0)
+
+        // 단일 레이어 — 기존 흐름 유지
+        if layers.count == 1 {
+            var elementsToRender = layers
+            if let bg = background, !elementsToRender.contains(where: { $0.id == bg.id }) {
+                elementsToRender.insert(bg, at: 0)
+            }
+            performExport(
+                elements: elementsToRender,
+                canvasSize: vm.project.canvasSize,
+                targetSize: vm.exportSize.size,
+                format: vm.exportFormat,
+                fileName: layers[0].name
+            )
+            return
         }
-        let fileName = layers.count == 1 ? layers[0].name : vm.project.name
-        performExport(
-            elements: elementsToRender,
-            canvasSize: vm.project.canvasSize,
-            targetSize: vm.exportSize.size,
-            format: vm.exportFormat,
-            fileName: fileName
-        )
+
+        // 다중 레이어 — 방식 선택
+        let canvasSize = vm.project.canvasSize
+        let targetSize = vm.exportSize.size
+        let format = vm.exportFormat
+        let projectName = vm.project.name
+
+        Task { @MainActor in
+            let alert = NSAlert()
+            alert.messageText = "내보내기 방식 선택"
+            alert.informativeText = "\(layers.count)개 레이어를 어떻게 내보낼까요?"
+            alert.addButton(withTitle: "각 레이어 별도 PNG")
+            alert.addButton(withTitle: "하나의 파일로 합치기")
+            alert.addButton(withTitle: "취소")
+
+            let choice = alert.runModal()
+            guard choice != .alertThirdButtonReturn else { return }
+
+            if choice == .alertFirstButtonReturn {
+                // ── 별도 PNG: 폴더 선택 후 레이어마다 파일 생성 ──
+                let openPanel = NSOpenPanel()
+                openPanel.canChooseDirectories = true
+                openPanel.canChooseFiles       = false
+                openPanel.canCreateDirectories = true
+                openPanel.prompt  = "선택"
+                openPanel.message = "PNG 파일을 저장할 폴더를 선택하세요"
+
+                let response = await openPanel.begin()
+                guard response == .OK, let folderURL = openPanel.url else { return }
+
+                var errors: [String] = []
+                var savedCount = 0
+
+                for layer in layers {
+                    var toRender: [CanvasElement] = background.map { [$0] } ?? []
+                    toRender.append(layer)
+
+                    let exportView = CanvasExportView(elements: toRender,
+                                                      canvasSize: canvasSize,
+                                                      targetSize: targetSize)
+                    let renderer = ImageRenderer(content: exportView)
+                    renderer.scale = 1.0
+                    guard let nsImage = renderer.nsImage,
+                          let data = nsImage.exportPNGData() else { continue }
+
+                    let fileURL = folderURL.appendingPathComponent("\(layer.name).png")
+                    do {
+                        try data.write(to: fileURL)
+                        savedCount += 1
+                    } catch {
+                        errors.append("\(layer.name): \(error.localizedDescription)")
+                    }
+                }
+
+                showBatchSaveResult(folderURL: folderURL,
+                                    savedCount: savedCount,
+                                    errors: errors)
+            } else {
+                // ── 하나의 파일로 합치기: 기존 NSSavePanel 흐름 ──
+                var elementsToRender = layers
+                if let bg = background, !elementsToRender.contains(where: { $0.id == bg.id }) {
+                    elementsToRender.insert(bg, at: 0)
+                }
+                performExport(
+                    elements: elementsToRender,
+                    canvasSize: canvasSize,
+                    targetSize: targetSize,
+                    format: format,
+                    fileName: projectName
+                )
+            }
+        }
+    }
+
+    @MainActor
+    private static func showBatchSaveResult(folderURL: URL, savedCount: Int, errors: [String]) {
+        let alert = NSAlert()
+        if errors.isEmpty {
+            alert.alertStyle    = .informational
+            alert.messageText   = "저장 완료"
+            alert.informativeText = "\(savedCount)개 파일이 저장되었습니다.\n\(folderURL.path)"
+            alert.addButton(withTitle: "Finder에서 열기")
+            alert.addButton(withTitle: "확인")
+            if alert.runModal() == .alertFirstButtonReturn {
+                NSWorkspace.shared.open(folderURL)
+            }
+        } else {
+            alert.alertStyle    = .warning
+            alert.messageText   = errors.count == savedCount + errors.count ? "저장 실패" : "일부 저장 실패"
+            alert.informativeText = "\(savedCount)개 저장 성공\n\n실패:\n\(errors.joined(separator: "\n"))"
+            alert.addButton(withTitle: "확인")
+            alert.runModal()
+        }
     }
 
     // DispatchQueue.main.async guarantees NSThread.isMainThread == true,
