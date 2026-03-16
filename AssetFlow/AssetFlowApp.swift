@@ -10,8 +10,17 @@ extension FocusedValues {
 
 struct AppCommands: Commands {
     @FocusedValue(\.iconDesignVM) private var vm: IconDesignViewModel?
+    @Environment(\.openWindow) private var openWindow
 
     var body: some Commands {
+        // "New Window"를 "New Project"로 교체
+        CommandGroup(replacing: .newItem) {
+            Button("New Project") {
+                openWindow(id: "new-project")
+            }
+            .keyboardShortcut("n", modifiers: [.command, .shift])
+        }
+
         CommandGroup(replacing: .saveItem) {
             Button("Save Project") {
                 guard let vm else { return }
@@ -65,6 +74,7 @@ struct AssetFlowApp: App {
     @State private var appState = AppState()
 
     var body: some Scene {
+        // 메인 창 (autosave 복원)
         WindowGroup {
             MainWindowView()
                 .environment(appState)
@@ -84,16 +94,24 @@ struct AssetFlowApp: App {
             AppCommands()
 
             CommandGroup(before: .toolbar) {
-                Button("Zoom In", systemImage: "plus.magnifyingglass") {
+                Button("Zoom In") {
                     appState.iconDesignZoomIn()
                 }
                 .keyboardShortcut("+", modifiers: [.command])
 
-                Button("Zoom Out", systemImage: "minus.magnifyingglass") {
+                Button("Zoom Out") {
                     appState.iconDesignZoomOut()
                 }
                 .keyboardShortcut("-", modifiers: [.command])
             }
         }
+
+        // 새 프로젝트 창 (빈 프로젝트, autosave 무관)
+        WindowGroup(id: "new-project") {
+            NewProjectWindowView()
+        }
+        .defaultSize(width: 1080, height: 800)
+        .windowStyle(.titleBar)
+        .windowToolbarStyle(.unified(showsTitle: true))
     }
 }

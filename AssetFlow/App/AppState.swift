@@ -22,8 +22,9 @@ final class AppState {
     var selectedFeature: AppFeature = .iconDesign
     var iconDesignViewModel = IconDesignViewModel()
 
-    init() {
-        if let saved = ProjectFileService.loadAutosave() {
+    /// - Parameter isNew: true이면 autosave를 무시하고 빈 프로젝트로 시작한다.
+    init(isNew: Bool = false) {
+        if !isNew, let saved = ProjectFileService.loadAutosave() {
             iconDesignViewModel.loadProject(saved)
         }
     }
