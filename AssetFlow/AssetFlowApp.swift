@@ -22,19 +22,20 @@ struct AppCommands: Commands {
         }
 
         CommandGroup(replacing: .saveItem) {
+            // NOTE: .disabled(vm == nil)을 사용하면 앱 시작 시 vm이 nil이어서
+            // SwiftUI가 CommandGroup 전체를 렌더링하지 않는 버그가 있음.
+            // 대신 액션 내부에서 guard let vm으로 nil 처리.
             Button("Save Project") {
                 guard let vm else { return }
                 ProjectFileService.saveProject(vm.project)
             }
             .keyboardShortcut("s", modifiers: [.command, .shift])
-            .disabled(vm == nil)
 
             Button("Open Project…") {
                 guard let vm else { return }
                 ProjectFileService.openProject { vm.loadProject($0) }
             }
             .keyboardShortcut("o", modifiers: [.command, .shift])
-            .disabled(vm == nil)
 
             Divider()
 
@@ -43,7 +44,6 @@ struct AppCommands: Commands {
                 ExportService.export(vm: vm)
             }
             .keyboardShortcut("e", modifiers: [.command, .shift])
-            .disabled(vm == nil)
 
             Divider()
 
@@ -62,7 +62,6 @@ struct AppCommands: Commands {
                 if !newName.isEmpty { vm.renameProject(newName) }
             }
             .keyboardShortcut("r", modifiers: [.command, .shift])
-            .disabled(vm == nil)
         }
     }
 }
