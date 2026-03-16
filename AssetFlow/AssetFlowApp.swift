@@ -16,7 +16,9 @@ struct NewProjectCommands: Commands {
     var body: some Commands {
         CommandGroup(replacing: .newItem) {
             Button("New Project") {
-                openWindow(id: "new-project")
+                // UUID를 값으로 전달해 매 호출마다 독립된 새 창을 생성한다.
+                // WindowGroup(id:for:)는 같은 값이 없으면 항상 새 창을 만든다.
+                openWindow(id: "new-project", value: UUID())
             }
             .keyboardShortcut("n", modifiers: [.command, .shift])
         }
@@ -116,7 +118,9 @@ struct AssetFlowApp: App {
             }
         }
 
-        WindowGroup(id: "new-project") {
+        // 새 프로젝트 창 — UUID 값을 키로 사용해 호출마다 독립된 창 생성
+        // 창 상태 복원은 불필요하므로 비활성화
+        WindowGroup(id: "new-project", for: UUID.self) { _ in
             NewProjectWindowView()
         }
         .defaultSize(width: 1080, height: 800)
