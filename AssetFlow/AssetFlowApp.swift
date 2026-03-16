@@ -1,30 +1,41 @@
 import SwiftUI
 
-// MARK: - FocusedValues — Commands에서 ViewModel에 접근하기 위한 키
+// MARK: - FocusedValues
 
 extension FocusedValues {
     @Entry var iconDesignVM: IconDesignViewModel? = nil
 }
 
-// MARK: - File 메뉴 커맨드
+// MARK: - New Project 커맨드 (openWindow 전용)
+// @Environment(\.openWindow)와 @FocusedValue를 같은 Commands 구조체에 섞으면
+// macOS 26에서 일부 CommandGroup이 렌더링되지 않는 버그가 있으므로 분리.
 
-struct AppCommands: Commands {
-    @FocusedValue(\.iconDesignVM) private var vm: IconDesignViewModel?
+struct NewProjectCommands: Commands {
     @Environment(\.openWindow) private var openWindow
 
     var body: some Commands {
-        // "New Window"를 "New Project"로 교체
         CommandGroup(replacing: .newItem) {
             Button("New Project") {
                 openWindow(id: "new-project")
             }
             .keyboardShortcut("n", modifiers: [.command, .shift])
         }
+    }
+}
 
-        CommandGroup(replacing: .saveItem) {
-            // NOTE: .disabled(vm == nil)을 사용하면 앱 시작 시 vm이 nil이어서
-            // SwiftUI가 CommandGroup 전체를 렌더링하지 않는 버그가 있음.
-            // 대신 액션 내부에서 guard let vm으로 nil 처리.
+// MARK: - File 조작 커맨드 (FocusedValue 전용)
+
+struct ProjectFileCommands: Commands {
+    @FocusedValue(\.iconDesignVM) private var vm: IconDesignViewModel?
+
+    var body: some Commands {
+        // replacing: .saveItem은 macOS 26에서 신뢰할 수 없으므로
+        // after: .newItem으로 위치를 지정하고 기본 saveItem은 빈 블록으로 제거.
+        CommandGroup(replacing: .saveItem) { }
+
+        CommandGroup(after: .newItem) {
+            Divider()
+
             Button("Save Project") {
                 guard let vm else { return }
                 ProjectFileService.saveProject(vm.project)
@@ -73,7 +84,6 @@ struct AssetFlowApp: App {
     @State private var appState = AppState()
 
     var body: some Scene {
-        // 메인 창 (autosave 복원)
         WindowGroup {
             MainWindowView()
                 .environment(appState)
@@ -90,7 +100,8 @@ struct AssetFlowApp: App {
         .windowStyle(.titleBar)
         .windowToolbarStyle(.unified(showsTitle: true))
         .commands {
-            AppCommands()
+            NewProjectCommands()
+            ProjectFileCommands()
 
             CommandGroup(before: .toolbar) {
                 Button("Zoom In") {
@@ -105,7 +116,6 @@ struct AssetFlowApp: App {
             }
         }
 
-        // 새 프로젝트 창 (빈 프로젝트, autosave 무관)
         WindowGroup(id: "new-project") {
             NewProjectWindowView()
         }
