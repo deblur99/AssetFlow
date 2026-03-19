@@ -20,10 +20,11 @@ nonisolated enum AppFeature: String, CaseIterable, Identifiable {
 @MainActor
 final class AppState {
     var selectedFeature: AppFeature = .iconDesign
-    var iconDesignViewModel = IconDesignViewModel()
+    var iconDesignViewModel: IconDesignViewModel
 
-    /// - Parameter isNew: true이면 autosave를 무시하고 빈 프로젝트로 시작한다.
+    /// - Parameter isNew: true이면 autosave를 무시하고 새 빈 프로젝트로 시작한다.
     init(isNew: Bool = false) {
+        iconDesignViewModel = IconDesignViewModel(isNew: isNew)
         if !isNew, let saved = ProjectFileService.loadAutosave() {
             iconDesignViewModel.loadProject(saved)
         }

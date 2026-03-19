@@ -923,7 +923,7 @@ private struct LayersListView: View {
     @State private var renamingElementId: UUID? = nil
 
     var body: some View {
-        List(vm.elements.reversed(), selection: $vm.selectedElementIds) { element in
+        List(vm.elements.reversed(), selection: $vm.canvasState.selectedElementIds) { element in
             LayerRowView(
                 element: element,
                 vm: vm,

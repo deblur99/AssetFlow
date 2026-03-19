@@ -78,7 +78,7 @@ struct DesignCanvasView: View {
                 MinimapView(
                     canvasSize: vm.project.canvasSize,
                     zoom: vm.zoom,
-                    canvasOffset: $vm.canvasOffset,
+                    canvasOffset: $vm.canvasState.canvasOffset,
                     viewportSize: geometry.size,
                     elements: vm.elements)
                     .padding(12)

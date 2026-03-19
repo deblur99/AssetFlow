@@ -1,3 +1,4 @@
+import AppKit
 import SwiftUI
 
 // MARK: - FocusedValues
@@ -6,47 +7,88 @@ extension FocusedValues {
     @Entry var iconDesignVM: IconDesignViewModel? = nil
 }
 
-// MARK: - New Project 커맨드 (openWindow 전용)
-// @Environment(\.openWindow)와 @FocusedValue를 같은 Commands 구조체에 섞으면
-// macOS 26에서 일부 CommandGroup이 렌더링되지 않는 버그가 있으므로 분리.
+// MARK: - Window registrar
+
+/// SwiftUI WindowGroup 창을 NewProjectWindowManager 레지스트리에 등록하는 헬퍼 뷰.
+/// NSView.viewDidMoveToWindow() 타이밍을 이용해 NSWindow 참조를 안정적으로 획득한다.
+private struct WindowRegistrar: NSViewRepresentable {
+    let appState: AppState
+
+    func makeNSView(context: Context) -> RegistrarView {
+        RegistrarView(appState: appState)
+    }
+
+    func updateNSView(_ nsView: RegistrarView, context: Context) {}
+
+    final class RegistrarView: NSView {
+        let appState: AppState
+
+        init(appState: AppState) {
+            self.appState = appState
+            super.init(frame: .zero)
+        }
+
+        required init?(coder: NSCoder) { fatalError() }
+
+        override func viewDidMoveToWindow() {
+            super.viewDidMoveToWindow()
+            guard let window else { return }
+            Task { @MainActor in
+                NewProjectWindowManager.shared.registerWindow(window, appState: self.appState)
+            }
+        }
+    }
+}
+
+// MARK: - New Project 커맨드
 
 struct NewProjectCommands: Commands {
-    @Environment(\.openWindow) private var openWindow
-
     var body: some Commands {
         CommandGroup(replacing: .newItem) {
             Button("New Project") {
-                // UUID를 값으로 전달해 매 호출마다 독립된 새 창을 생성한다.
-                // WindowGroup(id:for:)는 같은 값이 없으면 항상 새 창을 만든다.
-                openWindow(id: "new-project", value: UUID())
+                NewProjectWindowManager.shared.open()
             }
             .keyboardShortcut("n", modifiers: [.command, .shift])
         }
     }
 }
 
-// MARK: - File 조작 커맨드 (FocusedValue 전용)
+// MARK: - File 조작 커맨드
 
 struct ProjectFileCommands: Commands {
     @FocusedValue(\.iconDesignVM) private var vm: IconDesignViewModel?
 
     var body: some Commands {
-        // replacing: .saveItem은 macOS 26에서 신뢰할 수 없으므로
-        // after: .newItem으로 위치를 지정하고 기본 saveItem은 빈 블록으로 제거.
         CommandGroup(replacing: .saveItem) { }
 
         CommandGroup(after: .newItem) {
             Divider()
 
+            Button("Close Window") {
+                NSApp.keyWindow?.close()
+            }
+            .keyboardShortcut("w", modifiers: [.command])
+
+            Divider()
+
             Button("Save Project") {
                 guard let vm else { return }
-                ProjectFileService.saveProject(vm.project)
+                Task {
+                    await ProjectFileService.saveProject(vm.project)
+                }
             }
             .keyboardShortcut("s", modifiers: [.command, .shift])
 
             Button("Open Project…") {
                 guard let vm else { return }
-                ProjectFileService.openProject { vm.loadProject($0) }
+                Task {
+                    if let project = await ProjectFileService.openProject() {
+                        // 동일 프로젝트 ID의 창이 이미 열려 있으면 해당 창으로 포커스만 이동한다.
+                        if !NewProjectWindowManager.shared.focusWindowIfOpen(projectID: project.id) {
+                            vm.loadProject(project)
+                        }
+                    }
+                }
             }
             .keyboardShortcut("o", modifiers: [.command, .shift])
 
@@ -83,6 +125,7 @@ struct ProjectFileCommands: Commands {
 
 @main
 struct AssetFlowApp: App {
+    @NSApplicationDelegateAdaptor(AppDelegate.self) var appDelegate
     @State private var appState = AppState()
 
     var body: some Scene {
@@ -90,6 +133,7 @@ struct AssetFlowApp: App {
             MainWindowView()
                 .environment(appState)
                 .frame(minWidth: 600, minHeight: 400)
+                .background(WindowRegistrar(appState: appState))
                 .onReceive(
                     NotificationCenter.default.publisher(
                         for: NSApplication.willTerminateNotification)
@@ -101,6 +145,9 @@ struct AssetFlowApp: App {
         .defaultSize(width: 1080, height: 800)
         .windowStyle(.titleBar)
         .windowToolbarStyle(.unified(showsTitle: true))
+        // SwiftUI WindowGroup이 외부 파일 오픈 이벤트를 처리하지 않도록 한다.
+        // Finder 등에서 열린 파일은 AppDelegate.application(_:open:)이 직접 처리한다.
+        .handlesExternalEvents(matching: [])
         .commands {
             NewProjectCommands()
             ProjectFileCommands()
@@ -117,14 +164,5 @@ struct AssetFlowApp: App {
                 .keyboardShortcut("-", modifiers: [.command])
             }
         }
-
-        // 새 프로젝트 창 — UUID 값을 키로 사용해 호출마다 독립된 창 생성
-        // 창 상태 복원은 불필요하므로 비활성화
-        WindowGroup(id: "new-project", for: UUID.self) { _ in
-            NewProjectWindowView()
-        }
-        .defaultSize(width: 1080, height: 800)
-        .windowStyle(.titleBar)
-        .windowToolbarStyle(.unified(showsTitle: true))
     }
 }

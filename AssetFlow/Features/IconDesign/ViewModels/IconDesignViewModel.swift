@@ -68,10 +68,69 @@ enum ActiveTransform {
 @Observable
 @MainActor
 final class IconDesignViewModel {
-    // MARK: - Project
+    // MARK: - Canvas state (프로젝트별 데이터 집합)
 
-    var project = IconProject() {
+    /// 현재 열려 있는 프로젝트의 캔버스 상태.
+    /// `canvasState.id == canvasState.project.id`로 고유하게 식별된다.
+    var canvasState: CanvasState = CanvasState() {
         didSet { scheduleAutosave() }
+    }
+
+    // MARK: - New project flag
+
+    /// true이면 `initViewModel()` 호출 시 autosave를 복원하지 않고 새 프로젝트를 유지한다.
+    private let isNew: Bool
+
+    init(isNew: Bool = false) {
+        self.isNew = isNew
+    }
+
+    // MARK: - Canvas state forwarding
+
+    /// 현재 프로젝트 데이터. `canvasState.project`로 위임된다.
+    var project: IconProject {
+        get { canvasState.project }
+        set { canvasState.project = newValue }
+    }
+
+    /// 뷰포트 줌 배율. `canvasState.zoom`으로 위임된다.
+    var zoom: CGFloat {
+        get { canvasState.zoom }
+        set { canvasState.zoom = newValue }
+    }
+
+    /// 캔버스 패닝 오프셋. `canvasState.canvasOffset`으로 위임된다.
+    var canvasOffset: CGSize {
+        get { canvasState.canvasOffset }
+        set { canvasState.canvasOffset = newValue }
+    }
+
+    /// 다중 선택된 요소 ID 집합. `canvasState.selectedElementIds`로 위임된다.
+    var selectedElementIds: Set<UUID> {
+        get { canvasState.selectedElementIds }
+        set { canvasState.selectedElementIds = newValue }
+    }
+
+    /// 인라인 텍스트 편집기가 열린 요소 ID. `canvasState.editingTextElementId`로 위임된다.
+    var editingTextElementId: UUID? {
+        get { canvasState.editingTextElementId }
+        set { canvasState.editingTextElementId = newValue }
+    }
+
+    /// 클립보드. `canvasState.clipboard`로 위임된다.
+    var clipboard: CanvasElement? {
+        get { canvasState.clipboard }
+        set { canvasState.clipboard = newValue }
+    }
+
+    private var undoStack: [[CanvasElement]] {
+        get { canvasState.undoStack }
+        set { canvasState.undoStack = newValue }
+    }
+
+    private var redoStack: [[CanvasElement]] {
+        get { canvasState.redoStack }
+        set { canvasState.redoStack = newValue }
     }
 
     // MARK: - Tool state
@@ -121,9 +180,6 @@ final class IconDesignViewModel {
         }
     }
 
-    /// 다중 선택된 요소 ID 집합. 단일 선택 시에도 여기에 1개 들어간다.
-    var selectedElementIds: Set<UUID> = []
-
     /// 단일 선택 편의 프로퍼티. 정확히 1개 선택된 경우에만 non-nil.
     var selectedElementId: UUID? {
         selectedElementIds.count == 1 ? selectedElementIds.first : nil
@@ -166,18 +222,10 @@ final class IconDesignViewModel {
 
     // MARK: - Text editing state
 
-    /// 현재 인라인 편집기가 열려 있는 텍스트 요소 ID. nil이면 편집기가 닫혀 있음.
-    var editingTextElementId: UUID?
-
     // MARK: - Viewport
-
-    var zoom: CGFloat = 1.0
-    var canvasOffset: CGSize = .zero
 
     // MARK: - Undo / Redo
 
-    private var undoStack: [[CanvasElement]] = []
-    private var redoStack: [[CanvasElement]] = []
     private let maxUndoCount = 50
 
     // MARK: - Autosave
@@ -219,8 +267,8 @@ final class IconDesignViewModel {
         return project.elements.first { $0.id == id }
     }
 
-    var canUndo: Bool { !undoStack.isEmpty }
-    var canRedo: Bool { !redoStack.isEmpty }
+    var canUndo: Bool { canvasState.canUndo }
+    var canRedo: Bool { canvasState.canRedo }
 
     // MARK: - Auto-save
 
@@ -234,22 +282,20 @@ final class IconDesignViewModel {
             guard !Task.isCancelled else { return }
             let snapshot = self.project
             Task.detached(priority: .utility) {
-                AutoSaveService.save(project: snapshot)
+                await AutoSaveService.save(project: snapshot)
             }
         }
     }
     
     // MARK: - Clipboard
 
-    var clipboard: CanvasElement?
-
     // MARK: - Initialization
 
     func initViewModel() {
         // TODO: 임시 처리: 이후 툴팁 언제 띄울지 결정되면 코드 수정
         isTipBannerPresented = true
-        // 마지막 작업 이어받기 — 자동 저장 파일이 있으면 복원
-        if let saved = AutoSaveService.load() {
+        // 새 프로젝트 모드면 autosave를 복원하지 않고 현재 빈 프로젝트를 그대로 유지한다.
+        if !isNew, let saved = AutoSaveService.load() {
             loadProject(saved)
         }
     }
@@ -262,13 +308,10 @@ final class IconDesignViewModel {
         scheduleAutoSave()
     }
 
-    /// 불러온 프로젝트로 교체하고 편집 상태를 초기화한다.
+    /// 불러온 프로젝트로 캔버스 상태를 교체한다.
+    /// 새 프로젝트의 ID(`newProject.id`)를 기준으로 새 `CanvasState`가 생성된다.
     func loadProject(_ newProject: IconProject) {
-        project               = newProject
-        undoStack             = []
-        redoStack             = []
-        selectedElementIds    = []
-        editingTextElementId  = nil
+        canvasState = CanvasState(project: newProject)
     }
 
     func renameElement(id: UUID, name: String) {
