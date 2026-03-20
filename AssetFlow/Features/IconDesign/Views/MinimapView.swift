@@ -247,11 +247,15 @@ struct MinimapView: View {
                 .foregroundColor: NSColor(textEl.textColor),
                 .paragraphStyle: ps,
             ])
-            let imgSize = CGSize(width: max(rect.width, 1), height: max(rect.height, 1))
+            // 스케일이 매우 작을 때 글리프 어드밴스 합이 부동소수점 오차로 컨테이너 너비를
+            // 약간 초과할 수 있어 마지막 글자가 잘린다. 오른쪽에 패딩을 추가해 방지.
+            let rightPadding = max(2.0, fontSize * 0.5)
+            let containerW = max(rect.width, 1) + rightPadding
+            let imgSize = CGSize(width: containerW, height: max(rect.height, 1))
             let ts = NSTextStorage(attributedString: attrStr)
             let lm = NSLayoutManager()
             let tc = NSTextContainer(containerSize: CGSize(
-                width: max(rect.width, 1),
+                width: containerW,
                 height: CGFloat.greatestFiniteMagnitude))
             ts.addLayoutManager(lm)
             lm.addTextContainer(tc)
@@ -260,6 +264,9 @@ struct MinimapView: View {
                 lm.drawGlyphs(forGlyphRange: lm.glyphRange(for: tc), at: .zero)
                 return true
             }
+            // drawRect 너비도 동일하게 늘려 이미지가 왜곡 없이 그려지도록 한다.
+            let drawRect = CGRect(x: rect.minX, y: rect.minY,
+                                  width: containerW, height: rect.height)
             ctx.drawLayer { inner in
                 if let sh = textEl.shadow {
                     inner.addFilter(.shadow(color: sh.color,
@@ -269,7 +276,7 @@ struct MinimapView: View {
                 }
                 applyRotation(to: &inner, center: center, degrees: textEl.rotation)
                 inner.opacity = textEl.opacity
-                inner.draw(Image(nsImage: img), in: rect)
+                inner.draw(Image(nsImage: img), in: drawRect)
             }
 
         case .background(let bg):

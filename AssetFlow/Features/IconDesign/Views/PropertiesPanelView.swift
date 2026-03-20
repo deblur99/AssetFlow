@@ -290,6 +290,28 @@ struct PropertiesPanelView: View {
                                 width: newW, height: newH))
                         }
                     }
+
+                    Divider()
+
+                    HStack(spacing: 8) {
+                        NudgeStepperView(label: "X") { delta in
+                            guard let cur = vm.selectedElement else { return }
+                            vm.shearElement(id: cur.id, dx: delta)
+                        }
+                        NudgeStepperView(label: "Y") { delta in
+                            guard let cur = vm.selectedElement else { return }
+                            vm.shearElement(id: cur.id, dy: delta)
+                        }
+                    }
+                } else if vm.selectedElementIds.count > 1 {
+                    HStack(spacing: 8) {
+                        NudgeStepperView(label: "X") { vm.nudgeSelectedElements(dx: $0) }
+                        NudgeStepperView(label: "Y") { vm.nudgeSelectedElements(dy: $0) }
+                    }
+                    Text("\(vm.selectedElementIds.count)개 레이어 선택됨")
+                        .font(.caption2)
+                        .foregroundStyle(.tertiary)
+                        .frame(maxWidth: .infinity, alignment: .center)
                 } else {
                     Text("No selection")
                         .font(.caption)
@@ -945,6 +967,43 @@ private struct LayersListView: View {
     }
 }
 
+// MARK: - Nudge stepper (다중 선택 시 축별 ±1 이동)
+
+private struct NudgeStepperView: View {
+    let label: String
+    let onStep: (CGFloat) -> Void
+
+    var body: some View {
+        HStack(spacing: 3) {
+            Text(label)
+                .font(.caption)
+                .foregroundStyle(.secondary)
+                .frame(minWidth: 20, alignment: .leading)
+
+            HStack(spacing: 0) {
+                Button { onStep(-1) } label: {
+                    Image(systemName: "minus")
+                        .font(.caption2.weight(.semibold))
+                        .frame(maxWidth: .infinity, maxHeight: .infinity)
+                }
+                Divider()
+                Button { onStep(+1) } label: {
+                    Image(systemName: "plus")
+                        .font(.caption2.weight(.semibold))
+                        .frame(maxWidth: .infinity, maxHeight: .infinity)
+                }
+            }
+            .buttonStyle(.borderless)
+            .frame(height: 22)
+            .background(.background)
+            .clipShape(RoundedRectangle(cornerRadius: 5))
+            .overlay(RoundedRectangle(cornerRadius: 5).stroke(Color.secondary.opacity(0.25), lineWidth: 1))
+            .frame(maxWidth: .infinity)
+        }
+        .frame(maxWidth: .infinity)
+    }
+}
+
 // MARK: - Transform field (label + text input)
 
 private struct TransformFieldView: View {
@@ -971,7 +1030,7 @@ private struct TransformFieldView: View {
                 .onSubmit { commitValue() }
                 .onAppear { text = formatted(value) }
                 .onChange(of: value) { _, v in
-                    if !isFocused { text = formatted(v) }
+                    text = formatted(v)
                 }
                 .onKeyPress(.upArrow) { step(+1); return .handled }
                 .onKeyPress(.downArrow) { step(-1); return .handled }

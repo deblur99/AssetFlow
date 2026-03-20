@@ -85,15 +85,6 @@ struct IconDesignView: View {
                     Image(systemName: "1.magnifyingglass")
                 }
                 .help("Reset Zoom (100%)")
-
-                Divider()
-
-                Button {
-                    ExportService.export(vm: vm)
-                } label: {
-                    Label("Export", systemImage: "square.and.arrow.up")
-                }
-                .help("Export Icon (⌘⇧E)")
             }
         }
         .background {

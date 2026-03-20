@@ -682,9 +682,79 @@ extension IconDesignViewModel {
         setElementFrame(id: id, frame: newFrame)
         if let r = rotation { setElementRotation(id: id, rotation: r) }
     }
-}
 
-// MARK: - Text element management
+    /// 선택된 모든 요소를 dx, dy만큼 이동한다.
+    /// Path 요소는 각 점을 평행이동하고, 나머지 타입은 frame origin을 이동한다.
+    func nudgeSelectedElements(dx: CGFloat = 0, dy: CGFloat = 0) {
+        guard !selectedElementIds.isEmpty, dx != 0 || dy != 0 else { return }
+        checkpoint()
+        for id in selectedElementIds {
+            guard let idx = project.elements.firstIndex(where: { $0.id == id }) else { continue }
+            switch project.elements[idx] {
+            case .shape(var e):
+                e.frame = e.frame.offsetBy(dx: dx, dy: dy)
+                project.elements[idx] = .shape(e)
+            case .image(var e):
+                e.frame = e.frame.offsetBy(dx: dx, dy: dy)
+                project.elements[idx] = .image(e)
+            case .symbol(var e):
+                e.frame = e.frame.offsetBy(dx: dx, dy: dy)
+                project.elements[idx] = .symbol(e)
+            case .text(var e):
+                e.frame = e.frame.offsetBy(dx: dx, dy: dy)
+                project.elements[idx] = .text(e)
+            case .path(var e):
+                e.points = e.points.map { CGPoint(x: $0.x + dx, y: $0.y + dy) }
+                project.elements[idx] = .path(e)
+            case .background:
+                break
+            }
+        }
+        project.updatedAt = Date()
+    }
+
+    /// 요소의 가까운 edge(left/top)를 delta만큼 이동하고 반대 edge(right/bottom)는 고정한다.
+    /// dx > 0 → 왼쪽 edge 오른쪽 이동, 오른쪽 edge 고정 (width 감소)
+    /// dy > 0 → 위쪽 edge 아래 이동, 아래쪽 edge 고정 (height 감소)
+    /// - Text: fontSize 변경 없이 frame만 조정한다.
+    /// - Path: setElementFrame의 스케일 변환으로 points를 비례 조정한다.
+    func shearElement(id: UUID, dx: CGFloat = 0, dy: CGFloat = 0) {
+        guard let idx = project.elements.firstIndex(where: { $0.id == id }) else { return }
+        let f = project.elements[idx].frame
+        let newFrame = CGRect(
+            x: f.minX + dx,
+            y: f.minY + dy,
+            width:  f.width  + dx,
+            height: f.height + dy
+//            width:  max(1, f.width  - dx),
+//            height: max(1, f.height - dy)
+        )
+        checkpoint()
+        switch project.elements[idx] {
+        case .shape(var e):
+            e.frame = newFrame
+            project.elements[idx] = .shape(e)
+        case .image(var e):
+            e.frame = newFrame
+            project.elements[idx] = .image(e)
+        case .symbol(var e):
+            e.frame = newFrame
+            project.elements[idx] = .symbol(e)
+        case .text(var e):
+            // fontSize는 변경하지 않고 frame 위치·크기만 조정
+            e.frame = newFrame
+            project.elements[idx] = .text(e)
+        case .path(var e):
+            // setElementFrame 내부 스케일 변환을 그대로 사용
+            project.elements[idx] = .path(e)
+            setElementFrame(id: id, frame: newFrame)
+            return  // setElementFrame이 updatedAt을 갱신하므로 여기서 리턴
+        case .background:
+            break
+        }
+        project.updatedAt = Date()
+    }
+}
 
 extension IconDesignViewModel {
     func createTextElement(at point: CGPoint) {

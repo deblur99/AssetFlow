@@ -142,7 +142,10 @@ struct AssetFlowApp: App {
                         appState.iconDesignViewModel.project)
                 }
         }
-        .defaultSize(width: 1080, height: 800)
+        .defaultSize(
+            width: NSScreen.main?.visibleFrame.width ?? 1080,
+            height: NSScreen.main?.visibleFrame.height ?? 800
+        )
         .windowStyle(.titleBar)
         .windowToolbarStyle(.unified(showsTitle: true))
         // SwiftUI WindowGroup이 외부 파일 오픈 이벤트를 처리하지 않도록 한다.
