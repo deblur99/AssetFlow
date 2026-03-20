@@ -49,6 +49,14 @@ struct NewProjectCommands: Commands {
                 NewProjectWindowManager.shared.open()
             }
             .keyboardShortcut("n", modifiers: [.command, .shift])
+
+            Button("Open PNG as Project…") {
+                Task {
+                    if let project = await ProjectFileService.openPNGAsProject() {
+                        NewProjectWindowManager.shared.open(with: project)
+                    }
+                }
+            }
         }
     }
 }

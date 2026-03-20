@@ -54,6 +54,94 @@ enum ExportSize: String, CaseIterable, Identifiable {
     }
 }
 
+// MARK: - Export mode
+
+enum ExportMode: String, CaseIterable, Identifiable {
+    case singleFile    = "Export as Single Icon File"
+    case layerFolder   = "Export as Folder Containing Each Layer"
+    case platformSizes = "Export as Multiple Size Formats of Specific Platform"
+
+    var id: String { rawValue }
+}
+
+// MARK: - Platform export spec
+
+struct PlatformIconSize {
+    let filename: String  // relative path from platform folder, e.g. "AppIcon-180.png" or "mipmap-xxxhdpi/ic_launcher.png"
+    let pixelSize: CGSize
+}
+
+enum ExportPlatform: String, CaseIterable, Identifiable {
+    case iOS      = "iOS"
+    case macOS    = "macOS"
+    case watchOS  = "watchOS"
+    case visionOS = "visionOS"
+    case android  = "Android"
+    case web      = "Web"
+
+    var id: String { rawValue }
+
+    var sizes: [PlatformIconSize] {
+        switch self {
+        case .iOS:
+            return [
+                PlatformIconSize(filename: "AppIcon-1024.png",  pixelSize: CGSize(width: 1024, height: 1024)),
+                PlatformIconSize(filename: "AppIcon-180.png",   pixelSize: CGSize(width: 180,  height: 180)),
+                PlatformIconSize(filename: "AppIcon-167.png",   pixelSize: CGSize(width: 167,  height: 167)),
+                PlatformIconSize(filename: "AppIcon-152.png",   pixelSize: CGSize(width: 152,  height: 152)),
+                PlatformIconSize(filename: "AppIcon-120.png",   pixelSize: CGSize(width: 120,  height: 120)),
+                PlatformIconSize(filename: "AppIcon-87.png",    pixelSize: CGSize(width: 87,   height: 87)),
+                PlatformIconSize(filename: "AppIcon-80.png",    pixelSize: CGSize(width: 80,   height: 80)),
+                PlatformIconSize(filename: "AppIcon-58.png",    pixelSize: CGSize(width: 58,   height: 58)),
+            ]
+        case .macOS:
+            return [
+                PlatformIconSize(filename: "icon_512x512@2x.png", pixelSize: CGSize(width: 1024, height: 1024)),
+                PlatformIconSize(filename: "icon_512x512.png",    pixelSize: CGSize(width: 512,  height: 512)),
+                PlatformIconSize(filename: "icon_256x256@2x.png", pixelSize: CGSize(width: 512,  height: 512)),
+                PlatformIconSize(filename: "icon_256x256.png",    pixelSize: CGSize(width: 256,  height: 256)),
+                PlatformIconSize(filename: "icon_128x128@2x.png", pixelSize: CGSize(width: 256,  height: 256)),
+                PlatformIconSize(filename: "icon_128x128.png",    pixelSize: CGSize(width: 128,  height: 128)),
+                PlatformIconSize(filename: "icon_32x32@2x.png",   pixelSize: CGSize(width: 64,   height: 64)),
+                PlatformIconSize(filename: "icon_32x32.png",      pixelSize: CGSize(width: 32,   height: 32)),
+                PlatformIconSize(filename: "icon_16x16@2x.png",   pixelSize: CGSize(width: 32,   height: 32)),
+                PlatformIconSize(filename: "icon_16x16.png",      pixelSize: CGSize(width: 16,   height: 16)),
+            ]
+        case .watchOS:
+            return [
+                PlatformIconSize(filename: "AppIcon-1024.png", pixelSize: CGSize(width: 1024, height: 1024)),
+                PlatformIconSize(filename: "AppIcon-108.png",  pixelSize: CGSize(width: 108,  height: 108)),
+                PlatformIconSize(filename: "AppIcon-87.png",   pixelSize: CGSize(width: 87,   height: 87)),
+                PlatformIconSize(filename: "AppIcon-80.png",   pixelSize: CGSize(width: 80,   height: 80)),
+                PlatformIconSize(filename: "AppIcon-48.png",   pixelSize: CGSize(width: 48,   height: 48)),
+            ]
+        case .visionOS:
+            return [
+                PlatformIconSize(filename: "AppIcon-1024.png", pixelSize: CGSize(width: 1024, height: 1024)),
+            ]
+        case .android:
+            return [
+                PlatformIconSize(filename: "play_store_512.png",              pixelSize: CGSize(width: 512, height: 512)),
+                PlatformIconSize(filename: "mipmap-xxxhdpi/ic_launcher.png",  pixelSize: CGSize(width: 192, height: 192)),
+                PlatformIconSize(filename: "mipmap-xxhdpi/ic_launcher.png",   pixelSize: CGSize(width: 144, height: 144)),
+                PlatformIconSize(filename: "mipmap-xhdpi/ic_launcher.png",    pixelSize: CGSize(width: 96,  height: 96)),
+                PlatformIconSize(filename: "mipmap-hdpi/ic_launcher.png",     pixelSize: CGSize(width: 72,  height: 72)),
+                PlatformIconSize(filename: "mipmap-mdpi/ic_launcher.png",     pixelSize: CGSize(width: 48,  height: 48)),
+            ]
+        case .web:
+            return [
+                PlatformIconSize(filename: "android-chrome-512x512.png", pixelSize: CGSize(width: 512, height: 512)),
+                PlatformIconSize(filename: "maskable_icon.png",           pixelSize: CGSize(width: 512, height: 512)),
+                PlatformIconSize(filename: "apple-touch-icon.png",        pixelSize: CGSize(width: 180, height: 180)),
+                PlatformIconSize(filename: "android-chrome-192x192.png",  pixelSize: CGSize(width: 192, height: 192)),
+                PlatformIconSize(filename: "favicon-48x48.png",           pixelSize: CGSize(width: 48,  height: 48)),
+                PlatformIconSize(filename: "favicon-32x32.png",           pixelSize: CGSize(width: 32,  height: 32)),
+                PlatformIconSize(filename: "favicon-16x16.png",           pixelSize: CGSize(width: 16,  height: 16)),
+            ]
+        }
+    }
+}
+
 // MARK: - Active transform session
 
 enum ActiveTransform {
@@ -195,6 +283,9 @@ final class IconDesignViewModel {
 
     var exportFormat: ExportFormat = .png
     var exportSize: ExportSize = .ios
+    var exportMode: ExportMode = .singleFile
+    var exportWithoutBackground: Bool = false
+    var selectedPlatforms: Set<String> = []
 
     // MARK: - Active transform session
 

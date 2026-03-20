@@ -94,6 +94,39 @@ enum ProjectFileService {
         }
     }
 
+    /// PNG 파일을 선택하여 새 프로젝트로 변환한다.
+    /// - 캔버스 크기: 이미지 실제 크기 (단, 최소 1×1, 최대 4096×4096으로 클램프)
+    /// - 레이어 구성: 흰색 배경 + PNG 이미지 레이어 (캔버스 전체 크기)
+    static func openPNGAsProject() async -> IconProject? {
+        let panel = NSOpenPanel()
+        panel.allowedContentTypes = [.png]
+        panel.canChooseFiles = true
+        panel.canChooseDirectories = false
+        panel.allowsMultipleSelection = false
+        panel.message = "프로젝트로 변환할 PNG 파일을 선택하세요."
+
+        guard await panel.begin() == .OK,
+              let url = panel.url,
+              let image = NSImage(contentsOf: url)
+        else { return nil }
+
+        let projectName = url.deletingPathExtension().lastPathComponent
+        let naturalSize = image.size
+        let clamp: (CGFloat) -> CGFloat = { min(max($0, 1), 4096) }
+        let canvasSize = CGSize(width: clamp(naturalSize.width),
+                                height: clamp(naturalSize.height))
+
+        var project = IconProject(name: projectName, canvasSize: canvasSize)
+        let imageElement = ImageElement(
+            id: UUID(),
+            name: projectName,
+            frame: CGRect(origin: .zero, size: canvasSize),
+            image: image
+        )
+        project.elements.append(.image(imageElement))
+        return project
+    }
+
     // MARK: - Alerts
 
     private static func showSaveResult(url: URL, error: Error?) {

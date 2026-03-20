@@ -249,13 +249,140 @@ struct CanvasExportView: View {
 @MainActor
 enum ExportService {
     static func export(vm: IconDesignViewModel) {
+        let elements = vm.exportWithoutBackground
+            ? vm.project.elements.filter { if case .background = $0 { return false }; return true }
+            : vm.project.elements
         performExport(
-            elements: vm.project.elements,
+            elements: elements,
             canvasSize: vm.project.canvasSize,
             targetSize: vm.exportSize.size,
             format: vm.exportFormat,
             fileName: vm.project.name
         )
+    }
+
+    /// 각 레이어를 개별 PNG 파일로 폴더에 내보냅니다.
+    static func exportLayerFolder(vm: IconDesignViewModel) {
+        let allElements = vm.project.elements
+        let background = allElements.first { if case .background = $0 { return true }; return false }
+        let layers = allElements.filter { element in
+            if case .background = element { return false }
+            return element.isVisible
+        }
+        let canvasSize = vm.project.canvasSize
+        let targetSize = vm.exportSize.size
+        let projectName = vm.project.name
+        let excludeBackground = vm.exportWithoutBackground
+
+        Task { @MainActor in
+            let openPanel = NSOpenPanel()
+            openPanel.canChooseDirectories = true
+            openPanel.canChooseFiles       = false
+            openPanel.canCreateDirectories = true
+            openPanel.prompt  = "선택"
+            openPanel.message = "레이어 파일들을 저장할 폴더를 선택하세요"
+
+            let response = await openPanel.begin()
+            guard response == .OK, let baseURL = openPanel.url else { return }
+
+            let folderURL = baseURL.appendingPathComponent(projectName)
+            try? FileManager.default.createDirectory(at: folderURL, withIntermediateDirectories: true)
+
+            var errors: [String] = []
+            var savedCount = 0
+
+            for layer in layers {
+                var toRender: [CanvasElement] = []
+                if !excludeBackground, let bg = background {
+                    toRender.append(bg)
+                }
+                toRender.append(layer)
+
+                let exportView = CanvasExportView(elements: toRender,
+                                                  canvasSize: canvasSize,
+                                                  targetSize: targetSize)
+                let renderer = ImageRenderer(content: exportView)
+                renderer.scale = 1.0
+                guard let nsImage = renderer.nsImage,
+                      let data = nsImage.exportPNGData() else { continue }
+
+                let fileURL = folderURL.appendingPathComponent("\(layer.name).png")
+                do {
+                    try data.write(to: fileURL)
+                    savedCount += 1
+                } catch {
+                    errors.append("\(layer.name): \(error.localizedDescription)")
+                }
+            }
+
+            showBatchSaveResult(folderURL: folderURL, savedCount: savedCount, errors: errors)
+        }
+    }
+
+    /// 선택한 플랫폼별 규격으로 내보냅니다. 출력 구조: 선택폴더/프로젝트명/플랫폼명/파일
+    static func exportPlatformSizes(vm: IconDesignViewModel) {
+        guard !vm.selectedPlatforms.isEmpty else {
+            Task { @MainActor in
+                let alert = NSAlert()
+                alert.messageText = "플랫폼을 선택하세요"
+                alert.informativeText = "내보낼 플랫폼을 하나 이상 선택해야 합니다."
+                alert.addButton(withTitle: "확인")
+                alert.runModal()
+            }
+            return
+        }
+
+        let allElements = vm.project.elements
+        let elements = vm.exportWithoutBackground
+            ? allElements.filter { if case .background = $0 { return false }; return true }
+            : allElements
+        let canvasSize = vm.project.canvasSize
+        let projectName = vm.project.name
+        let platforms = ExportPlatform.allCases.filter { vm.selectedPlatforms.contains($0.rawValue) }
+
+        Task { @MainActor in
+            let openPanel = NSOpenPanel()
+            openPanel.canChooseDirectories = true
+            openPanel.canChooseFiles       = false
+            openPanel.canCreateDirectories = true
+            openPanel.prompt  = "선택"
+            openPanel.message = "플랫폼 아이콘들을 저장할 폴더를 선택하세요"
+
+            let response = await openPanel.begin()
+            guard response == .OK, let baseURL = openPanel.url else { return }
+
+            let projectFolderURL = baseURL.appendingPathComponent(projectName)
+            var totalSaved = 0
+            var allErrors: [String] = []
+
+            for platform in platforms {
+                let platformFolderURL = projectFolderURL.appendingPathComponent(platform.rawValue)
+
+                for spec in platform.sizes {
+                    // Create subdirectory if needed (e.g. mipmap-xxxhdpi/)
+                    let fileURL = platformFolderURL.appendingPathComponent(spec.filename)
+                    let dir = fileURL.deletingLastPathComponent()
+                    try? FileManager.default.createDirectory(at: dir, withIntermediateDirectories: true)
+
+                    let exportView = CanvasExportView(elements: elements,
+                                                      canvasSize: canvasSize,
+                                                      targetSize: spec.pixelSize)
+                    let renderer = ImageRenderer(content: exportView)
+                    renderer.scale = 1.0
+                    guard let nsImage = renderer.nsImage,
+                          let data = nsImage.exportPNGData() else { continue }
+
+                    do {
+                        try data.write(to: fileURL)
+                        totalSaved += 1
+                    } catch {
+                        allErrors.append("\(platform.rawValue)/\(spec.filename): \(error.localizedDescription)")
+                    }
+                }
+            }
+
+            showBatchSaveResult(folderURL: projectFolderURL, savedCount: totalSaved, errors: allErrors)
+        }
     }
 
     /// 선택한 레이어들만 내보내기. 배경 레이어는 렌더링용으로 항상 포함된다.
