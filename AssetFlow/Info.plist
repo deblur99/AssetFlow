@@ -14,6 +14,18 @@
 				<string>com.deblurlab.assetflow-project</string>
 			</array>
 		</dict>
+		<dict>
+			<key>CFBundleTypeName</key>
+			<string>PNG Image</string>
+			<key>CFBundleTypeRole</key>
+			<string>Viewer</string>
+			<key>LSHandlerRank</key>
+			<string>Alternate</string>
+			<key>LSItemContentTypes</key>
+			<array>
+				<string>public.png</string>
+			</array>
+		</dict>
 	</array>
 	<key>UTExportedTypeDeclarations</key>
 	<array>
