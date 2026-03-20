@@ -164,6 +164,16 @@ final class IconDesignViewModel {
         didSet { scheduleAutosave() }
     }
 
+    // MARK: - File save state
+
+    /// .asflow 파일로 한 번이라도 저장된 적 있으면 true. 자동저장 활성화 여부에 사용된다.
+    private(set) var hasSavedFile = false
+
+    /// 프로젝트가 .asflow 파일로 저장됐음을 표시한다.
+    func markSavedToFile() {
+        hasSavedFile = true
+    }
+
     // MARK: - New project flag
 
     /// true이면 `initViewModel()` 호출 시 autosave를 복원하지 않고 새 프로젝트를 유지한다.
@@ -324,11 +334,22 @@ final class IconDesignViewModel {
     private var autosaveTask: Task<Void, Never>?
 
     private func scheduleAutosave() {
+        guard hasSavedFile else { return }  // 한 번도 저장되지 않은 프로젝트는 자동저장하지 않는다
         autosaveTask?.cancel()
         autosaveTask = Task { @MainActor in
             try? await Task.sleep(for: .seconds(2))
             guard !Task.isCancelled else { return }
             ProjectFileService.saveAutosave(self.project)
+        }
+    }
+
+    /// 대기 중인 자동저장 Task를 취소하고 자동저장 파일을 삭제한다.
+    func clearAutosave() {
+        autosaveTask?.cancel()
+        autosaveTask = nil
+        AutoSaveService.clear()
+        if let url = ProjectFileService.autosaveURL {
+            try? FileManager.default.removeItem(at: url)
         }
     }
 
@@ -361,34 +382,12 @@ final class IconDesignViewModel {
     var canUndo: Bool { canvasState.canUndo }
     var canRedo: Bool { canvasState.canRedo }
 
-    // MARK: - Auto-save
-
-    private var autoSaveTask: Task<Void, Never>?
-
-    /// 마지막 호출로부터 2초 뒤 자동 저장을 실행한다 (debounce).
-    private func scheduleAutoSave() {
-        autoSaveTask?.cancel()
-        autoSaveTask = Task { @MainActor in
-            try? await Task.sleep(for: .seconds(2))
-            guard !Task.isCancelled else { return }
-            let snapshot = self.project
-            Task.detached(priority: .utility) {
-                await AutoSaveService.save(project: snapshot)
-            }
-        }
-    }
-    
     // MARK: - Clipboard
 
     // MARK: - Initialization
 
     func initViewModel() {
-        // TODO: 임시 처리: 이후 툴팁 언제 띄울지 결정되면 코드 수정
         isTipBannerPresented = true
-        // 새 프로젝트 모드면 autosave를 복원하지 않고 현재 빈 프로젝트를 그대로 유지한다.
-        if !isNew, let saved = AutoSaveService.load() {
-            loadProject(saved)
-        }
     }
 
     // MARK: - Edit Metadata
@@ -396,13 +395,18 @@ final class IconDesignViewModel {
     func renameProject(_ newName: String) {
         project.name = newName
         project.updatedAt = Date()
-        scheduleAutoSave()
     }
 
     /// 불러온 프로젝트로 캔버스 상태를 교체한다.
-    /// 새 프로젝트의 ID(`newProject.id`)를 기준으로 새 `CanvasState`가 생성된다.
     func loadProject(_ newProject: IconProject) {
         canvasState = CanvasState(project: newProject)
+    }
+
+    /// 현재 창에서 빈 새 프로젝트로 초기화한다.
+    func resetToNewProject() {
+        clearAutosave()   // 이전 프로젝트의 autosave 파일 삭제
+        hasSavedFile = false
+        canvasState = CanvasState()
     }
 
     func renameElement(id: UUID, name: String) {
@@ -569,7 +573,6 @@ final class IconDesignViewModel {
         bg.fillColor = color
         project.elements[idx] = .background(bg)
         project.updatedAt = Date()
-        scheduleAutoSave()
     }
 
     func updateBackgroundGradient(_ gradient: GradientConfig?) {
@@ -578,7 +581,6 @@ final class IconDesignViewModel {
         bg.gradient = gradient
         project.elements[idx] = .background(bg)
         project.updatedAt = Date()
-        scheduleAutoSave()
     }
 
     func updateBackgroundOpacity(_ opacity: Double) {
@@ -587,7 +589,6 @@ final class IconDesignViewModel {
         bg.opacity = opacity
         project.elements[idx] = .background(bg)
         project.updatedAt = Date()
-        scheduleAutoSave()
     }
 }
 
@@ -627,7 +628,7 @@ extension IconDesignViewModel {
             }
             let rawPoints = activePathPoints
             let finalPoints = smoothPath ? simplifyPath(rawPoints) : rawPoints
-            let penColor = IconDesignViewModel.colorIsTransparent(strokeColor) ? Color.black : strokeColor
+            let penColor = fillColor
             let pathEl = PathElement(
                 id: UUID(),
                 name: "Path \(project.elements.count + 1)",
@@ -835,7 +836,7 @@ extension IconDesignViewModel {
             // fontSize는 변경하지 않고 frame 위치·크기만 조정
             e.frame = newFrame
             project.elements[idx] = .text(e)
-        case .path(var e):
+        case .path(let e):
             // setElementFrame 내부 스케일 변환을 그대로 사용
             project.elements[idx] = .path(e)
             setElementFrame(id: id, frame: newFrame)
@@ -909,7 +910,6 @@ extension IconDesignViewModel {
         e.text = text
         project.elements[idx] = .text(e)
         project.updatedAt = Date()
-        scheduleAutoSave()
     }
 
     /// 선택된 모든 텍스트 요소의 타이포그래피 속성을 일괄 업데이트한다.
@@ -1124,7 +1124,6 @@ extension IconDesignViewModel {
         e.tintColor = color
         project.elements[idx] = .symbol(e)
         project.updatedAt = Date()
-        scheduleAutoSave()
     }
 }
 
@@ -1135,7 +1134,6 @@ extension IconDesignViewModel {
         undoStack.append(project.elements)
         if undoStack.count > maxUndoCount { undoStack.removeFirst() }
         redoStack.removeAll()
-        scheduleAutoSave()
     }
 
     private func resetActiveDrawing() {

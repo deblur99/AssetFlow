@@ -7,46 +7,15 @@ extension FocusedValues {
     @Entry var iconDesignVM: IconDesignViewModel? = nil
 }
 
-// MARK: - Window registrar
-
-/// SwiftUI WindowGroup 창을 NewProjectWindowManager 레지스트리에 등록하는 헬퍼 뷰.
-/// NSView.viewDidMoveToWindow() 타이밍을 이용해 NSWindow 참조를 안정적으로 획득한다.
-private struct WindowRegistrar: NSViewRepresentable {
-    let appState: AppState
-
-    func makeNSView(context: Context) -> RegistrarView {
-        RegistrarView(appState: appState)
-    }
-
-    func updateNSView(_ nsView: RegistrarView, context: Context) {}
-
-    final class RegistrarView: NSView {
-        let appState: AppState
-
-        init(appState: AppState) {
-            self.appState = appState
-            super.init(frame: .zero)
-        }
-
-        required init?(coder: NSCoder) { fatalError() }
-
-        override func viewDidMoveToWindow() {
-            super.viewDidMoveToWindow()
-            guard let window else { return }
-            Task { @MainActor in
-                NewProjectWindowManager.shared.registerWindow(window, appState: self.appState)
-            }
-        }
-    }
-}
-
 // MARK: - New Project 커맨드
 
 struct NewProjectCommands: Commands {
+    @FocusedValue(\.iconDesignVM) private var vm: IconDesignViewModel?
+
     var body: some Commands {
         CommandGroup(replacing: .newItem) {
             Button("New Project") {
-                NewProjectWindowManager.shared.open()
+                showNewProjectDialog(currentVM: vm)
             }
             .keyboardShortcut("n", modifiers: [.command, .shift])
 
@@ -57,6 +26,38 @@ struct NewProjectCommands: Commands {
                     }
                 }
             }
+        }
+    }
+
+    @MainActor
+    private func showNewProjectDialog(currentVM: IconDesignViewModel?) {
+        let alert = NSAlert()
+        alert.alertStyle = .informational
+        alert.messageText = "새 프로젝트를 어떻게 시작하시겠습니까?"
+        alert.addButton(withTitle: "저장하고 현재 창에서 시작")  // .alertFirstButtonReturn
+        alert.addButton(withTitle: "저장하지 않고 현재 창에서 시작")  // .alertSecondButtonReturn
+        alert.addButton(withTitle: "새 창에서 시작")  // .alertThirdButtonReturn
+        alert.addButton(withTitle: "취소")  // .default
+        alert.buttons[3].keyEquivalent = "\u{1b}"  // Escape 키를 취소 버튼에 매핑
+
+        switch alert.runModal() {
+        case .alertFirstButtonReturn:
+            guard let vm = currentVM else {
+                NewProjectWindowManager.shared.open()
+                return
+            }
+            Task { @MainActor in
+                if await ProjectFileService.saveProject(vm.project) {
+                    vm.markSavedToFile()
+                    vm.resetToNewProject()
+                }
+            }
+        case .alertSecondButtonReturn:
+            currentVM?.resetToNewProject() ?? NewProjectWindowManager.shared.open()
+        case .alertThirdButtonReturn:
+            NewProjectWindowManager.shared.open()
+        default:  // 새 창에서 시작
+            break
         }
     }
 }
@@ -82,7 +83,9 @@ struct ProjectFileCommands: Commands {
             Button("Save Project") {
                 guard let vm else { return }
                 Task {
-                    await ProjectFileService.saveProject(vm.project)
+                    if await ProjectFileService.saveProject(vm.project) {
+                        vm.markSavedToFile()
+                    }
                 }
             }
             .keyboardShortcut("s", modifiers: [.command, .shift])
@@ -90,11 +93,27 @@ struct ProjectFileCommands: Commands {
             Button("Open Project…") {
                 guard let vm else { return }
                 Task {
-                    if let project = await ProjectFileService.openProject() {
-                        // 동일 프로젝트 ID의 창이 이미 열려 있으면 해당 창으로 포커스만 이동한다.
-                        if !NewProjectWindowManager.shared.focusWindowIfOpen(projectID: project.id) {
-                            vm.loadProject(project)
-                        }
+                    guard let project = await ProjectFileService.openProject() else { return }
+
+                    // 이미 열려 있는 창이면 포커스만 이동
+                    if NewProjectWindowManager.shared.focusWindowIfOpen(projectID: project.id) { return }
+
+                    // 현재 창에 프로젝트가 있으면 어디서 열지 묻는다
+                    let alert = NSAlert()
+                    alert.alertStyle = .informational
+                    alert.messageText = "'\(project.name)'을(를) 어디서 여시겠습니까?"
+                    alert.addButton(withTitle: "새 창에서 열기")       // .alertFirstButtonReturn
+                    alert.addButton(withTitle: "현재 창에서 열기")      // .alertSecondButtonReturn
+                    alert.addButton(withTitle: "취소")                 // .alertThirdButtonReturn
+
+                    switch alert.runModal() {
+                    case .alertFirstButtonReturn:
+                        NewProjectWindowManager.shared.open(with: project, fromFile: true)
+                    case .alertSecondButtonReturn:
+                        vm.loadProject(project)
+                        vm.markSavedToFile()
+                    default:
+                        break
                     }
                 }
             }
@@ -134,43 +153,31 @@ struct ProjectFileCommands: Commands {
 @main
 struct AssetFlowApp: App {
     @NSApplicationDelegateAdaptor(AppDelegate.self) var appDelegate
-    @State private var appState = AppState()
 
     var body: some Scene {
+        // WindowGroup은 SwiftUI 커맨드 시스템 연결 목적으로만 사용한다.
+        // 실제 창 관리는 AppDelegate(AppKit)에서 전담하므로, 콘텐츠는 invisible placeholder.
         WindowGroup {
-            MainWindowView()
-                .environment(appState)
-                .frame(minWidth: 600, minHeight: 400)
-                .background(WindowRegistrar(appState: appState))
-                .onReceive(
-                    NotificationCenter.default.publisher(
-                        for: NSApplication.willTerminateNotification)
-                ) { _ in
-                    ProjectFileService.saveAutosave(
-                        appState.iconDesignViewModel.project)
-                }
+            Color.clear
+                .frame(width: 0, height: 0)
         }
-        .defaultSize(
-            width: NSScreen.main?.visibleFrame.width ?? 1080,
-            height: NSScreen.main?.visibleFrame.height ?? 800
-        )
-        .windowStyle(.titleBar)
-        .windowToolbarStyle(.unified(showsTitle: true))
-        // SwiftUI WindowGroup이 외부 파일 오픈 이벤트를 처리하지 않도록 한다.
-        // Finder 등에서 열린 파일은 AppDelegate.application(_:open:)이 직접 처리한다.
-        .handlesExternalEvents(matching: [])
+        .windowResizability(.contentSize)
         .commands {
             NewProjectCommands()
             ProjectFileCommands()
 
             CommandGroup(before: .toolbar) {
                 Button("Zoom In") {
-                    appState.iconDesignZoomIn()
+                    if let appState = NewProjectWindowManager.shared.keyWindowAppState {
+                        appState.iconDesignZoomIn()
+                    }
                 }
                 .keyboardShortcut("+", modifiers: [.command])
 
                 Button("Zoom Out") {
-                    appState.iconDesignZoomOut()
+                    if let appState = NewProjectWindowManager.shared.keyWindowAppState {
+                        appState.iconDesignZoomOut()
+                    }
                 }
                 .keyboardShortcut("-", modifiers: [.command])
             }

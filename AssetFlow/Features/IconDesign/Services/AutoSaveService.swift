@@ -7,12 +7,11 @@ enum AutoSaveService {
     private static let fileName = "autosave.asflow"
 
     static var autosaveURL: URL? {
-        guard let appSupport = FileManager.default
-            .urls(for: .applicationSupportDirectory, in: .userDomainMask).first
-        else { return nil }
+        guard let appSupport = FileManager.default.urls(for: .applicationSupportDirectory, in: .userDomainMask).first else {
+            return nil
+        }
         let dir = appSupport.appendingPathComponent("AssetFlow", isDirectory: true)
-        try? FileManager.default.createDirectory(at: dir,
-                                                  withIntermediateDirectories: true)
+        try? FileManager.default.createDirectory(at: dir, withIntermediateDirectories: true)
         return dir.appendingPathComponent(fileName)
     }
 

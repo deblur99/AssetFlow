@@ -25,7 +25,9 @@ final class NewProjectWindowManager {
     func registerWindow(_ window: NSWindow, appState: AppState, windowController: NSWindowController? = nil) {
         purgeClosedEntries()
         guard !entries.contains(where: { $0.window === window }) else { return }
-        entries.append(WindowEntry(windowController: windowController, window: window, appState: appState))
+
+        entries.append(WindowEntry(windowController: windowController, window: window,
+                                   appState: appState))
 
         NotificationCenter.default.addObserver(
             forName: NSWindow.willCloseNotification,
@@ -34,6 +36,10 @@ final class NewProjectWindowManager {
         ) { [weak self] _ in
             Task { @MainActor [weak self] in
                 self?.entries.removeAll { $0.window == nil || $0.window === window }
+                // 모든 프로젝트 창이 닫히면 환영 화면을 표시한다
+                if self?.entries.isEmpty == true {
+                    (NSApp.delegate as? AppDelegate)?.showWelcomeWindow()
+                }
             }
         }
     }
@@ -41,11 +47,14 @@ final class NewProjectWindowManager {
     // MARK: - New project window
 
     /// 새 창을 연다.
-    /// - Parameter project: nil이면 빈 새 프로젝트, non-nil이면 해당 프로젝트를 로드한다.
-    func open(with project: IconProject? = nil) {
+    /// - Parameters:
+    ///   - project: nil이면 빈 새 프로젝트, non-nil이면 해당 프로젝트를 로드한다.
+    ///   - fromFile: true이면 .asflow 파일에서 연 것으로 표시해 자동저장을 활성화한다.
+    func open(with project: IconProject? = nil, fromFile: Bool = false) {
         let appState = AppState(isNew: true)
         if let project {
             appState.iconDesignViewModel.loadProject(project)
+            if fromFile { appState.iconDesignViewModel.markSavedToFile() }
         }
 
         let content = MainWindowView()
@@ -83,6 +92,20 @@ final class NewProjectWindowManager {
         window.makeKeyAndOrderFront(nil)
         NSApp.activate(ignoringOtherApps: true)
         return true
+    }
+
+    // MARK: - ViewModels
+
+    /// 현재 열려 있는 모든 창의 ViewModel 목록을 반환한다.
+    var allViewModels: [IconDesignViewModel] {
+        purgeClosedEntries()
+        return entries.compactMap { $0.window != nil ? $0.appState.iconDesignViewModel : nil }
+    }
+
+    /// 현재 key window에 연결된 AppState를 반환한다. 줌 등 전역 커맨드에서 사용.
+    var keyWindowAppState: AppState? {
+        guard let keyWindow = NSApp.keyWindow else { return nil }
+        return entries.first { $0.window === keyWindow }?.appState
     }
 
     // MARK: - Private
