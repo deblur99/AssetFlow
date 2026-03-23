@@ -11,11 +11,14 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
     // MARK: - Launch
 
     func applicationDidFinishLaunching(_ notification: Notification) {
-        // SwiftUI WindowGroup이 자동으로 여는 빈 placeholder 창을 닫은 뒤 환영 창을 연다.
-        // async 디스패치로 SwiftUI가 WindowGroup 창을 생성한 이후에 실행을 보장한다.
+        // SwiftUI WindowGroup이 자동으로 여는 빈 placeholder 창을 숨긴다.
+        // close() 대신 orderOut()을 사용해 SwiftUI가 창을 재생성하지 않도록 하고,
+        // isExcludedFromWindowsMenu로 독 Application Windows 목록에 나타나지 않게 한다.
         DispatchQueue.main.async { [weak self] in
             for window in NSApp.windows where !(window is NSPanel) {
-                window.close()
+                window.isExcludedFromWindowsMenu = true
+                window.collectionBehavior = [.ignoresCycle]
+                window.orderOut(nil)
             }
             self?.showWelcomeWindow()
         }
@@ -150,10 +153,13 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
 
     // MARK: - Helpers
 
-    /// 프로젝트 창이 열렸으면 welcome 창을 닫는다.
+    /// 프로젝트 창이 열렸으면 welcome 창을 숨긴다.
+    /// close() 대신 orderOut()을 사용해 welcomeWindow 참조를 유지한다.
+    /// close()를 쓰면 windowWillClose가 발화해 welcomeWindow = nil 되고,
+    /// 이후 showWelcomeWindow()가 새 창을 만들어 독 메뉴에 고스트 창이 누적된다.
     func closeWelcomeIfProjectOpen() {
         if !NewProjectWindowManager.shared.allViewModels.isEmpty {
-            welcomeWindow?.close()
+            welcomeWindow?.orderOut(nil)
         }
     }
 }
