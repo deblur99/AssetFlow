@@ -6,6 +6,7 @@
 	<true/>
 	<key>com.apple.security.files.user-selected.read-write</key>
 	<true/>
+	<!-- 최근 파일 목록에서 재시작 후에도 접근하기 위한 security-scoped bookmark 권한 -->
 	<key>com.apple.security.files.bookmarks.app-scope</key>
 	<true/>
 </dict>
