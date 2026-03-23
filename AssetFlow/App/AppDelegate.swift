@@ -44,9 +44,12 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
         NSApp.activate(ignoringOtherApps: true)
     }
 
-    /// 프로젝트를 열 때 welcome 창을 닫는다. NSApp.keyWindow 대신 welcomeWindow를 직접 사용해 신뢰성을 높인다.
+    /// 프로젝트를 열 때 welcome 창을 숨긴다.
+    /// close() 대신 orderOut()을 사용해 welcomeWindow 참조를 유지하면서 화면에서만 제거한다.
+    /// close()를 쓰면 windowWillClose가 발화해 welcomeWindow가 nil이 되고,
+    /// 독 메뉴에서 창 항목을 클릭해도 창이 복원되지 않는 문제가 생긴다.
     func closeWelcomeWindow() {
-        welcomeWindow?.close()
+        welcomeWindow?.orderOut(nil)
     }
 
     // MARK: - Lifecycle
@@ -160,6 +163,14 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
 extension AppDelegate: NSWindowDelegate {
     func windowWillClose(_ notification: Notification) {
         guard (notification.object as? NSWindow) === welcomeWindow else { return }
+        // 사용자가 X 버튼으로 직접 닫은 경우에만 참조를 해제한다.
+        // orderOut()으로 숨기는 경우에는 이 메서드가 호출되지 않는다.
         welcomeWindow = nil
+    }
+
+    func windowDidBecomeKey(_ notification: Notification) {
+        guard (notification.object as? NSWindow) === welcomeWindow else { return }
+        // 독 메뉴 클릭 등으로 창이 활성화될 때 최신 데이터로 뷰를 갱신한다.
+        (welcomeWindow?.contentViewController as? NSHostingController<WelcomeView>)?.rootView = WelcomeView()
     }
 }
