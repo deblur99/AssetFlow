@@ -27,6 +27,7 @@ final class AppState {
         iconDesignViewModel = IconDesignViewModel(isNew: isNew)
         if !isNew, let saved = ProjectFileService.loadAutosave() {
             iconDesignViewModel.loadProject(saved)
+            iconDesignViewModel.markSavedToFile()  // autosave가 있다면 이전에 저장된 프로젝트임
         }
     }
 

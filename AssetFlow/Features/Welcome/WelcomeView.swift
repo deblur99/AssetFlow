@@ -123,7 +123,25 @@ struct WelcomeView: View {
     private func openRecentProject(_ recent: RecentProject) {
         let decoder = JSONDecoder()
         decoder.dateDecodingStrategy = .iso8601
-        guard let data = try? Data(contentsOf: recent.url),
+
+        // Security-scoped bookmark으로 sandbox 세션 간 파일 접근 권한을 복원한다.
+        var resolvedURL = recent.url
+        var isSecurityScoped = false
+        if let bookmarkData = recent.bookmarkData {
+            var isStale = false
+            if let url = try? URL(
+                resolvingBookmarkData: bookmarkData,
+                options: .withSecurityScope,
+                relativeTo: nil,
+                bookmarkDataIsStale: &isStale
+            ) {
+                resolvedURL = url
+                isSecurityScoped = url.startAccessingSecurityScopedResource()
+            }
+        }
+        defer { if isSecurityScoped { resolvedURL.stopAccessingSecurityScopedResource() } }
+
+        guard let data = try? Data(contentsOf: resolvedURL),
               let project = try? decoder.decode(IconProject.self, from: data)
         else {
             let alert = NSAlert()
@@ -142,7 +160,7 @@ struct WelcomeView: View {
         }
         openAndCloseWelcome {
             NewProjectWindowManager.shared.open(with: project, fromFile: true)
-            RecentProjectsService.shared.add(name: project.name, url: recent.url)
+            RecentProjectsService.shared.add(name: project.name, url: resolvedURL)
         }
     }
 

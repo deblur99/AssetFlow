@@ -51,7 +51,6 @@ struct DesignCanvasView: View {
                     hoverState.isHovering = true
                     cursorFor(canvasCoord(from: location, viewSize: geometry.size)).set()
                 case .ended:
-                    print("continuouse hover ended")
                     hoverState.isHovering = false
                     NSCursor.arrow.set()
                 }
@@ -401,8 +400,7 @@ extension DesignCanvasView {
     private func renderActivePreview(in ctx: inout GraphicsContext, zoom z: CGFloat) {
         if vm.activePathPoints.count > 1 {
             let p = polyline(from: vm.activePathPoints, zoom: z)
-            let color = IconDesignViewModel.colorIsTransparent(vm.strokeColor) ? Color.black : vm.strokeColor
-            ctx.stroke(p, with: .color(color),
+            ctx.stroke(p, with: .color(vm.fillColor),
                        style: StrokeStyle(lineWidth: vm.lineWidth * z,
                                           lineCap: .round, lineJoin: .round))
         }
@@ -503,10 +501,8 @@ extension DesignCanvasView {
         magnifyMonitor = NSEvent.addLocalMonitorForEvents(matching: .magnify) { [hoverState] event in
             guard hoverState.isHovering else { return event }
             let delta = event.magnification  // +: 확대, -: 축소
-            DispatchQueue.main.async {
-                let dampened = 1 + delta * 0.6
-                self.vm.zoom = max(0.05, min(self.vm.zoom * dampened, 16.0))
-            }
+            let dampened = 1 + delta * 0.6
+            self.vm.zoom = max(0.05, min(self.vm.zoom * dampened, 16.0))
             return event
         }
     }
@@ -515,14 +511,14 @@ extension DesignCanvasView {
         guard scrollMonitor == nil else { return }
         scrollMonitor = NSEvent.addLocalMonitorForEvents(matching: .scrollWheel) { [hoverState] event in
             guard hoverState.isHovering else { return event }
+            // 관성(momentum) 스크롤 이벤트는 손을 뗀 뒤에도 계속 발생해 딜레이처럼 느껴지므로 무시한다.
+            guard event.momentumPhase == .none || event.momentumPhase == [] else { return nil }
 
             if event.modifierFlags.contains(.command) {
                 // cmd+스크롤: 줌
                 let delta = event.scrollingDeltaY
-                DispatchQueue.main.async {
-                    let factor = 1.0 + delta * 0.005
-                    self.vm.zoom = max(0.05, min(self.vm.zoom * factor, 16.0))
-                }
+                let factor = 1.0 + delta * 0.005
+                self.vm.zoom = max(0.05, min(self.vm.zoom * factor, 16.0))
                 return nil
             }
 
@@ -538,10 +534,8 @@ extension DesignCanvasView {
                 dx = event.scrollingDeltaX
                 dy = event.scrollingDeltaY
             }
-            DispatchQueue.main.async {
-                self.vm.canvasOffset.width += dx
-                self.vm.canvasOffset.height += dy
-            }
+            self.vm.canvasOffset.width += dx
+            self.vm.canvasOffset.height += dy
             return nil
         }
     }

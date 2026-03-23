@@ -49,22 +49,26 @@ enum ProjectFileService {
 
     // MARK: - Save
 
-    static func saveProject(_ project: IconProject) async {
+    @discardableResult
+    static func saveProject(_ project: IconProject) async -> Bool {
         let panel = NSSavePanel()
         panel.allowedContentTypes = [.assetflowProject]
         panel.nameFieldStringValue = project.name
         panel.message = "AssetFlow 프로젝트 파일로 저장합니다."
 
-        guard await panel.begin() == .OK, let url = panel.url else { return }
+        guard await panel.begin() == .OK, let url = panel.url else { return false }
 
         do {
             let encoder = JSONEncoder()
             encoder.outputFormatting = [.prettyPrinted, .sortedKeys]
             encoder.dateEncodingStrategy = .iso8601
             try encoder.encode(project).write(to: url, options: .atomic)
+            RecentProjectsService.shared.add(name: project.name, url: url)
             showSaveResult(url: url, error: nil)
+            return true
         } catch {
             showSaveResult(url: url, error: error)
+            return false
         }
     }
 
@@ -87,7 +91,9 @@ enum ProjectFileService {
         do {
             let decoder = JSONDecoder()
             decoder.dateDecodingStrategy = .iso8601
-            return try decoder.decode(IconProject.self, from: Data(contentsOf: url))
+            let project = try decoder.decode(IconProject.self, from: Data(contentsOf: url))
+            RecentProjectsService.shared.add(name: project.name, url: url)
+            return project
         } catch {
             showOpenError(error)
             return nil

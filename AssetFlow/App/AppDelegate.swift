@@ -160,9 +160,6 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
 extension AppDelegate: NSWindowDelegate {
     func windowWillClose(_ notification: Notification) {
         guard (notification.object as? NSWindow) === welcomeWindow else { return }
-        welcomeWindow = nil  // 다음 showWelcomeWindow() 호출 시 새로 생성하도록 초기화
-        if NewProjectWindowManager.shared.allViewModels.isEmpty {
-            NSApp.terminate(nil)
-        }
+        welcomeWindow = nil
     }
 }
