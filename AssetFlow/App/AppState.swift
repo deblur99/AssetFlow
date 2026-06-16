@@ -25,7 +25,7 @@ final class AppState {
     /// - Parameter isNew: true이면 autosave를 무시하고 새 빈 프로젝트로 시작한다.
     init(isNew: Bool = false) {
         iconDesignViewModel = IconDesignViewModel(isNew: isNew)
-        if !isNew, let saved = ProjectFileService.loadAutosave() {
+        if !isNew, let saved = AutoSaveService.load() {
             iconDesignViewModel.loadProject(saved)
             iconDesignViewModel.markSavedToFile()  // autosave가 있다면 이전에 저장된 프로젝트임
         }

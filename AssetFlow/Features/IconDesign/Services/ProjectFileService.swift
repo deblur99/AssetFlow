@@ -16,37 +16,6 @@ extension UTType {
 
 @MainActor
 enum ProjectFileService {
-    // MARK: - Autosave (무음 저장/복원)
-
-    /// ~/Library/Application Support/AssetFlow/autosave.asflow
-    static var autosaveURL: URL? {
-        guard let base = FileManager.default
-            .urls(for: .applicationSupportDirectory, in: .userDomainMask).first
-        else { return nil }
-        let folder = base.appendingPathComponent("AssetFlow", isDirectory: true)
-        try? FileManager.default.createDirectory(at: folder, withIntermediateDirectories: true)
-        return folder.appendingPathComponent("autosave.asflow")
-    }
-
-    /// 알림 없이 자동저장 파일에 쓴다.
-    static func saveAutosave(_ project: IconProject) {
-        guard let url = autosaveURL else { return }
-        let encoder = JSONEncoder()
-        encoder.dateEncodingStrategy = .iso8601
-        try? encoder.encode(project).write(to: url, options: .atomic)
-    }
-
-    /// 자동저장 파일이 있으면 읽어 반환한다. 없거나 파싱 실패 시 nil.
-    static func loadAutosave() -> IconProject? {
-        guard let url = autosaveURL,
-              FileManager.default.fileExists(atPath: url.path),
-              let data = try? Data(contentsOf: url)
-        else { return nil }
-        let decoder = JSONDecoder()
-        decoder.dateDecodingStrategy = .iso8601
-        return try? decoder.decode(IconProject.self, from: data)
-    }
-
     // MARK: - Save
 
     @discardableResult

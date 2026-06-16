@@ -19,7 +19,7 @@ struct WelcomeView: View {
         )
         .onAppear {
             recentProjects = RecentProjectsService.shared.projects.filter { $0.fileExists }
-            autosaveProject = ProjectFileService.loadAutosave()
+            autosaveProject = AutoSaveService.load()
         }
     }
 

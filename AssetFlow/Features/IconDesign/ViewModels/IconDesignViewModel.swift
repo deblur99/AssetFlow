@@ -339,7 +339,7 @@ final class IconDesignViewModel {
         autosaveTask = Task { @MainActor in
             try? await Task.sleep(for: .seconds(2))
             guard !Task.isCancelled else { return }
-            ProjectFileService.saveAutosave(self.project)
+            AutoSaveService.save(project: self.project)
         }
     }
 
@@ -348,9 +348,6 @@ final class IconDesignViewModel {
         autosaveTask?.cancel()
         autosaveTask = nil
         AutoSaveService.clear()
-        if let url = ProjectFileService.autosaveURL {
-            try? FileManager.default.removeItem(at: url)
-        }
     }
 
     // MARK: - Zoom Threshold

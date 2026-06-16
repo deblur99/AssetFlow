@@ -65,9 +65,6 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
     /// 앱이 정상 종료되기 직전 autosave 파일을 삭제한다 (크래시 복구 파일은 크래시 시에만 유지).
     func applicationWillTerminate(_ notification: Notification) {
         AutoSaveService.clear()
-        if let url = ProjectFileService.autosaveURL {
-            try? FileManager.default.removeItem(at: url)
-        }
     }
 
     /// Cmd+Q 시 저장 경고창을 표시한다.
