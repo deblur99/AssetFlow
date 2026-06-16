@@ -132,21 +132,18 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
                     id: UUID(), name: projectName,
                     frame: CGRect(origin: .zero, size: canvasSize), image: image
                 )))
-                Task { @MainActor in
-                    NewProjectWindowManager.shared.open(with: project)
-                    self.closeWelcomeIfProjectOpen()
-                }
+                NewProjectWindowManager.shared.open(with: project)
+                self.closeWelcomeIfProjectOpen()
             } else {
                 guard let data = try? Data(contentsOf: url),
                       let project = try? decoder.decode(IconProject.self, from: data)
                 else { continue }
-                Task { @MainActor in
-                    if !NewProjectWindowManager.shared.focusWindowIfOpen(projectID: project.id) {
-                        NewProjectWindowManager.shared.open(with: project, fromFile: true)
-                        RecentProjectsService.shared.add(name: project.name, url: url)
-                    }
-                    self.closeWelcomeIfProjectOpen()
+                
+                if !NewProjectWindowManager.shared.focusWindowIfOpen(projectID: project.id) {
+                    NewProjectWindowManager.shared.open(with: project, fromFile: true)
+                    RecentProjectsService.shared.add(name: project.name, url: url)
                 }
+                self.closeWelcomeIfProjectOpen()
             }
         }
     }
